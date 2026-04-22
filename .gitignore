@@ -1,0 +1,51 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+.env
+*.env.local
+
+.venv/
+venv/
+env/
+
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+models/
+*.bin
+
+node_modules/
+frontend/dist/
+
+*.log
+logs/
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code / AI tooling
+.claude/
+claude-bootstrap.txt
+MEMORY.md
+
+# Cursor
+.cursorrules
+.cursor/
+
+# Windsurf
+.windsurfrules
+
+# Aider
+.aider*
+
+# Codeium
+.codeium/
+
+# Copilot
+.github/copilot-*
