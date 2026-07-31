@@ -32,6 +32,9 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 # File size limit: 10 MB
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
+# Track background tasks to prevent silent exception swallowing
+_background_tasks: set[asyncio.Task] = set()
+
 
 # Response models
 class DocumentJobResponse(BaseModel):
@@ -168,12 +171,12 @@ async def upload_and_translate(
         provider=provider,
     )
 
-    # Launch background translation task
+    # Launch background translation task with proper exception tracking
     settings = APISettings()
     provider_manager = ProviderManager(settings)
     translator = DocumentTranslator(provider_manager, parser)
 
-    asyncio.create_task(
+    task = asyncio.create_task(
         _run_translation_background(
             translator=translator,
             job_id=job.id,
@@ -182,8 +185,27 @@ async def upload_and_translate(
             provider_key_id=provider_key_id,
         )
     )
+    # Store task reference to prevent garbage collection and add exception logging
+    _background_tasks.add(task)
+    task.add_done_callback(_task_done_callback)
 
     return _job_to_response(job)
+
+
+def _task_done_callback(task: asyncio.Task) -> None:
+    """Log unhandled exceptions from background translation tasks."""
+    _background_tasks.discard(task)
+    if task.cancelled():
+        log.warning("background_translation_task_cancelled", task_name=task.get_name())
+        return
+    exc = task.exception()
+    if exc:
+        log.error(
+            "background_translation_task_failed",
+            task_name=task.get_name(),
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
 
 
 async def _run_translation_background(
