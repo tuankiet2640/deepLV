@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
+from src.api.middleware.dependencies import get_current_user
 from src.api.models.password_reset import PasswordResetToken
 from src.api.models.user import User
 from src.api.services.auth import (
@@ -193,3 +194,37 @@ async def reset_password(
 
     log.info("password_reset_completed", user_id=str(user.id))
     return ResetPasswordResponse(message="Password has been reset successfully")
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ChangePasswordResponse(BaseModel):
+    message: str
+
+
+@router.post("/change-password", response_model=ChangePasswordResponse)
+async def change_password(
+    req: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ChangePasswordResponse:
+    if not verify_password(req.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    if len(req.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 8 characters",
+        )
+
+    current_user.password_hash = hash_password(req.new_password)
+    await db.commit()
+
+    log.info("password_changed", user_id=str(current_user.id))
+    return ChangePasswordResponse(message="Password changed successfully")

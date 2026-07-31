@@ -164,6 +164,12 @@ export function Header() {
                     <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user?.email}</p>
                   </div>
                   <Link
+                    to="/profile"
+                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
+                  >
+                    Profile
+                  </Link>
+                  <Link
                     to="/api-keys"
                     className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
                   >
