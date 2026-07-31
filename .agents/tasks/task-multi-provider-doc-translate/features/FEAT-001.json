@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Multi-Provider Translation Engine - Create the provider abstraction layer that allows users to choose how their text is translated: (1) Built-in MarianMT models (free), (2) Bring-Your-Own-Key for OpenAI/HuggingFace/Google Translate, (3) Pay admin credits to use admin-managed API keys. Includes new SQLAlchemy models, provider service layer, credit system, and updated translate endpoint.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create src/api/models/__init__.py with DeclarativeBase. Create src/api/models/user.py (User model with id, email, password_hash, is_admin, credits_balance, created_at). Create src/api/models/api_key.py (APIKey model). Create src/api/models/usage_log.py (UsageLog model). These files are currently referenced but do not exist physically.",
     "Create src/api/models/provider_key.py - Model for user-stored provider API keys (user_id, provider enum [openai, huggingface, google, deepl], encrypted_api_key, label, created_at). Create src/api/models/admin_provider_key.py - Model for admin-managed provider keys (provider, encrypted_api_key, is_active, usage_count).",
@@ -31,5 +31,5 @@
     "Run python -c 'from src.api.models import Base; print(Base.metadata.tables.keys())' to verify all models are registered"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Models directory had to be un-ignored from .gitignore (models/ rule intended for ML binaries was blocking src/api/models/). Fixed with negation rule. test_api.py tests have pre-existing errors related to mock.patch not finding src.api.main module - verified same failures on base state without any changes. Python 3.12 used (3.9 was the default but project requires >=3.11). All new imports verified working. Provider abstraction uses abstract base class pattern for clean extensibility."
 }
