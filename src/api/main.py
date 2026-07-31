@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.metrics import metrics_middleware, metrics_response
 from src.api.middleware.rate_limit import RateLimiter
-from src.api.routers import auth, health, keys, translate, usage, providers, credits, documents
+from src.api.routers import admin, auth, health, keys, translate, usage, providers, credits, documents
 from src.api.services.cache import TranslationCache
 from src.shared.config import APISettings
 from src.shared.logging import setup_logging
@@ -89,6 +89,7 @@ app.include_router(usage.router, prefix="/api/v1")
 app.include_router(providers.router, prefix="/api/v1")
 app.include_router(credits.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 
 
 # Metrics endpoint (outside /api/v1 — for Prometheus scraping)

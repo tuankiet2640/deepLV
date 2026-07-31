@@ -7,6 +7,7 @@ import { GettingStartedPage } from "./pages/GettingStartedPage";
 import { ApiReferencePage } from "./pages/ApiReferencePage";
 import { StatusPage } from "./pages/StatusPage";
 import { ArchitecturePage } from "./pages/ArchitecturePage";
+import { AdminPage } from "./pages/AdminPage";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/api-reference" element={<ApiReferencePage />} />
             <Route path="/architecture" element={<ArchitecturePage />} />
             <Route path="/status" element={<StatusPage />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>
         <Footer />

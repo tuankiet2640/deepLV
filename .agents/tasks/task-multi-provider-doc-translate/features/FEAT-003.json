@@ -2,7 +2,7 @@
   "id": "FEAT-003",
   "type": "feat",
   "description": "Admin Dashboard - Backend API endpoints for admin operations (user management, usage analytics, credit pricing, admin provider key management) plus a React frontend admin panel accessible to admin users. Includes admin role enforcement and admin-specific UI pages.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create src/api/middleware/admin.py - get_admin_user dependency that checks user.is_admin flag, returns 403 if not admin.",
     "Create src/api/routers/admin.py - admin endpoints: GET /api/v1/admin/users (list all users with usage stats), GET /api/v1/admin/users/{user_id} (user detail), PATCH /api/v1/admin/users/{user_id} (update is_admin, credits), GET /api/v1/admin/usage (global usage analytics), GET /api/v1/admin/provider-keys (list admin provider keys), POST /api/v1/admin/provider-keys (add admin provider key), DELETE /api/v1/admin/provider-keys/{id}, PATCH /api/v1/admin/settings (update credit pricing).",
