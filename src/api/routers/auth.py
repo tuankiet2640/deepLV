@@ -50,11 +50,25 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)) -> 
             detail="Password must be at least 8 characters",
         )
 
-    user = User(email=req.email, password_hash=hash_password(req.password))
+    # Auto-bootstrap: first registered user becomes admin
+    from sqlalchemy import func
+    from sqlalchemy import select as sa_select
+
+    user_count_result = await db.execute(sa_select(func.count()).select_from(User))
+    user_count = user_count_result.scalar_one()
+    is_first_user = user_count == 0
+
+    user = User(
+        email=req.email,
+        password_hash=hash_password(req.password),
+        is_admin=is_first_user,
+    )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
+    if is_first_user:
+        log.info("first_user_admin_bootstrap", user_id=str(user.id), email=user.email)
     log.info("user_registered", user_id=str(user.id), email=user.email)
     return RegisterResponse(
         id=str(user.id),
