@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileUpload } from "../components/FileUpload";
 import { ProviderSelector } from "../components/ProviderSelector";
+import { DocumentCostEstimate } from "../components/DocumentCostEstimate";
 import { JobStatusCard } from "../components/JobStatusCard";
 import { useDocumentTranslation } from "../hooks/useDocumentTranslation";
 
@@ -96,6 +97,11 @@ export function DocumentTranslatePage() {
 
         {/* Provider selection */}
         <ProviderSelector value={provider} onChange={setProvider} />
+
+        {/* Cost estimate */}
+        {selectedFile && (
+          <DocumentCostEstimate file={selectedFile} provider={provider} />
+        )}
 
         {/* Submit button */}
         <button
