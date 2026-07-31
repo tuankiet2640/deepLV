@@ -73,8 +73,14 @@ async def purchase_credits(
             detail="Maximum single purchase is 10,000 credits",
         )
 
-    # Add credits to user balance
-    user.credits_balance += req.amount
+    # Add credits atomically to prevent concurrent purchase race condition
+    from sqlalchemy import update
+
+    await db.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(credits_balance=User.credits_balance + req.amount)
+    )
 
     # Record transaction
     transaction = CreditTransaction(
@@ -85,6 +91,7 @@ async def purchase_credits(
     )
     db.add(transaction)
     await db.commit()
+    await db.refresh(user)
     await db.refresh(transaction)
 
     log.info(

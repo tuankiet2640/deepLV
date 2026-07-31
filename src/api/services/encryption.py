@@ -6,17 +6,22 @@ The encryption key is derived from the application's configured secret.
 
 import base64
 import hashlib
+from functools import lru_cache
 
 from cryptography.fernet import Fernet
 
 from src.shared.config import APISettings
 
 
+@lru_cache(maxsize=1)
 def _get_fernet() -> Fernet:
-    """Create a Fernet instance using the configured encryption key.
+    """Create and cache a Fernet instance using the configured encryption key.
 
     Derives a 32-byte key from the ENCRYPTION_KEY setting using SHA-256,
     then base64-encodes it for Fernet compatibility.
+
+    The instance is cached at module level via @lru_cache to avoid
+    re-parsing settings and re-deriving the key on every call.
     """
     settings = APISettings()
     raw_key = settings.encryption_key.encode()
