@@ -11,6 +11,7 @@ import { TranslatePage } from "./pages/TranslatePage";
 import { DocumentTranslatePage } from "./pages/DocumentTranslatePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ApiKeysPage } from "./pages/ApiKeysPage";
+import { HistoryPage } from "./pages/HistoryPage";
 import { GettingStartedPage } from "./pages/GettingStartedPage";
 import { ApiReferencePage } from "./pages/ApiReferencePage";
 import { StatusPage } from "./pages/StatusPage";
@@ -56,6 +57,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <AdminPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/history"
+                element={
+                  <ProtectedRoute>
+                    <HistoryPage />
                   </ProtectedRoute>
                 }
               />
