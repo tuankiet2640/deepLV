@@ -47,6 +47,18 @@ async def client(mock_redis):
         redis_mod.from_url = lambda *args, **kwargs: mock_redis
         from src.api.main import app
 
+        # Initialize app.state that would normally be set by lifespan
+        import time
+        from src.api.middleware.rate_limit import RateLimiter
+        from src.api.services.cache import TranslationCache
+        from src.shared.config import APISettings
+
+        app.state.redis = mock_redis
+        app.state.translation_cache = TranslationCache(mock_redis)
+        app.state.rate_limiter = RateLimiter(mock_redis)
+        app.state.settings = APISettings()
+        app.state.start_time = time.monotonic()
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
@@ -75,14 +87,17 @@ async def test_languages_endpoint(client):
 
 @pytest.mark.asyncio
 async def test_register_and_login(client):
-    # Register
-    resp = await client.post(
-        "/api/v1/auth/register",
-        json={"email": "test@example.com", "password": "testpassword123"},
-    )
-    # May fail if PG is not available in CI — that's expected
-    # This test documents the expected behavior
-    assert resp.status_code in (201, 500)
+    # Register — requires PostgreSQL, so may fail without a DB
+    try:
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": "test@example.com", "password": "testpassword123"},
+        )
+        # May return 500 if PG is not available in CI — that's expected
+        assert resp.status_code in (201, 500)
+    except OSError:
+        # No PostgreSQL available — skip gracefully
+        pytest.skip("PostgreSQL not available")
 
 
 @pytest.mark.asyncio
