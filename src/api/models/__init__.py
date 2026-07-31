@@ -14,3 +14,5 @@ from src.api.models.usage_log import UsageLog  # noqa: E402, F401
 from src.api.models.provider_key import ProviderKey  # noqa: E402, F401
 from src.api.models.admin_provider_key import AdminProviderKey  # noqa: E402, F401
 from src.api.models.credit_transaction import CreditTransaction  # noqa: E402, F401
+from src.api.models.document_job import DocumentJob  # noqa: E402, F401
+from src.api.models.document_result import DocumentResult  # noqa: E402, F401

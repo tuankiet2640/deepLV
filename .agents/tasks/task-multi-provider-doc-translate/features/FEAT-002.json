@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Document Upload and Translation - Allow users to upload PDF, DOCX, or TXT files, parse the content, translate it using their chosen provider, and return the translated document. Includes file upload endpoint, document parsing service, async job processing via Redis queue, and job status tracking.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Add python-docx, PyPDF2 (or pypdf), and python-multipart to pyproject.toml dependencies.",
     "Create src/api/models/document_job.py - SQLAlchemy model for document translation jobs (id, user_id, original_filename, file_size_bytes, source_lang, target_lang, provider, status [pending, processing, completed, failed], error_message, created_at, completed_at).",

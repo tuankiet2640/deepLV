@@ -1,0 +1,330 @@
+"""Document translation router.
+
+Provides endpoints for uploading documents, tracking translation jobs,
+and downloading translated results.
+"""
+
+import asyncio
+
+import structlog
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.api.database import async_session, get_db
+from src.api.middleware.dependencies import get_current_user
+from src.api.models.document_job import DocumentJob
+from src.api.models.document_result import DocumentResult
+from src.api.models.user import User
+from src.api.services.document_parser import (
+    SUPPORTED_FORMATS,
+    DocumentParseError,
+    DocumentParser,
+)
+from src.api.services.document_translator import DocumentTranslator
+from src.api.services.provider_manager import SUPPORTED_PROVIDERS, ProviderManager
+from src.shared.config import APISettings
+
+log = structlog.get_logger()
+router = APIRouter(prefix="/documents", tags=["documents"])
+
+# File size limit: 10 MB
+MAX_FILE_SIZE = 10 * 1024 * 1024
+
+
+# Response models
+class DocumentJobResponse(BaseModel):
+    id: str
+    original_filename: str
+    file_size_bytes: int
+    source_lang: str
+    target_lang: str
+    provider: str
+    status: str
+    error_message: str | None
+    created_at: str
+    completed_at: str | None
+
+
+class DocumentJobListResponse(BaseModel):
+    jobs: list[DocumentJobResponse]
+    total: int
+
+
+class DocumentJobDetailResponse(DocumentJobResponse):
+    chunk_count: int | None = None
+    total_characters: int | None = None
+    translated_preview: str | None = None
+
+
+class DocumentDownloadResponse(BaseModel):
+    job_id: str
+    original_filename: str
+    translated_content: str
+    chunk_count: int
+    total_characters: int
+
+
+def _job_to_response(job: DocumentJob) -> DocumentJobResponse:
+    return DocumentJobResponse(
+        id=str(job.id),
+        original_filename=job.original_filename,
+        file_size_bytes=job.file_size_bytes,
+        source_lang=job.source_lang,
+        target_lang=job.target_lang,
+        provider=job.provider,
+        status=job.status,
+        error_message=job.error_message,
+        created_at=job.created_at.isoformat(),
+        completed_at=job.completed_at.isoformat() if job.completed_at else None,
+    )
+
+
+@router.post("/translate", response_model=DocumentJobResponse, status_code=status.HTTP_202_ACCEPTED)
+async def upload_and_translate(
+    file: UploadFile = File(...),
+    source_lang: str = Form(...),
+    target_lang: str = Form(...),
+    provider: str = Form(default="marianmt"),
+    provider_key_id: str | None = Form(default=None),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DocumentJobResponse:
+    """Upload a document for translation.
+
+    Accepts PDF, DOCX, or TXT files up to 10MB.
+    Creates a background translation job and returns immediately.
+
+    The job status can be polled via GET /api/v1/documents/jobs/{job_id}.
+    """
+    # Validate provider
+    if provider not in SUPPORTED_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported provider: {provider}. Supported: {', '.join(SUPPORTED_PROVIDERS)}",
+        )
+
+    # Validate file format
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must have a filename",
+        )
+
+    extension = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if extension not in SUPPORTED_FORMATS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file format: .{extension}. "
+            f"Supported formats: {', '.join(sorted(SUPPORTED_FORMATS))}",
+        )
+
+    # Read and validate file size
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)}MB. "
+            f"Your file is {len(file_bytes) / (1024 * 1024):.1f}MB.",
+        )
+
+    if len(file_bytes) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File is empty.",
+        )
+
+    # Parse the document to extract text
+    parser = DocumentParser()
+    try:
+        text_content = parser.parse(file_bytes, file.filename)
+    except DocumentParseError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    # Create the job record
+    job = DocumentJob(
+        user_id=user.id,
+        original_filename=file.filename,
+        file_size_bytes=len(file_bytes),
+        source_lang=source_lang,
+        target_lang=target_lang,
+        provider=provider,
+        status="pending",
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    log.info(
+        "document_job_created",
+        job_id=str(job.id),
+        user_id=str(user.id),
+        filename=file.filename,
+        size_bytes=len(file_bytes),
+        provider=provider,
+    )
+
+    # Launch background translation task
+    settings = APISettings()
+    provider_manager = ProviderManager(settings)
+    translator = DocumentTranslator(provider_manager, parser)
+
+    asyncio.create_task(
+        _run_translation_background(
+            translator=translator,
+            job_id=job.id,
+            text_content=text_content,
+            user_id=user.id,
+            provider_key_id=provider_key_id,
+        )
+    )
+
+    return _job_to_response(job)
+
+
+async def _run_translation_background(
+    translator: DocumentTranslator,
+    job_id,
+    text_content: str,
+    user_id,
+    provider_key_id: str | None,
+) -> None:
+    """Run document translation in a background task with its own DB session."""
+    async with async_session() as db:
+        # Re-fetch job and user in this session
+        job = await db.get(DocumentJob, job_id)
+        user = await db.get(User, user_id)
+
+        if not job or not user:
+            log.error("background_task_missing_records", job_id=str(job_id))
+            return
+
+        await translator.translate_document(
+            job=job,
+            text_content=text_content,
+            user=user,
+            db=db,
+            provider_key_id=provider_key_id,
+        )
+
+
+@router.get("/jobs", response_model=DocumentJobListResponse)
+async def list_jobs(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+) -> DocumentJobListResponse:
+    """List all document translation jobs for the current user."""
+    # Get total count
+    from sqlalchemy import func
+
+    count_result = await db.execute(
+        select(func.count()).where(DocumentJob.user_id == user.id)
+    )
+    total = count_result.scalar() or 0
+
+    # Get jobs
+    result = await db.execute(
+        select(DocumentJob)
+        .where(DocumentJob.user_id == user.id)
+        .order_by(DocumentJob.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    jobs = result.scalars().all()
+
+    return DocumentJobListResponse(
+        jobs=[_job_to_response(j) for j in jobs],
+        total=total,
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=DocumentJobDetailResponse)
+async def get_job_status(
+    job_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DocumentJobDetailResponse:
+    """Get detailed status of a document translation job."""
+    result = await db.execute(
+        select(DocumentJob).where(
+            DocumentJob.id == job_id, DocumentJob.user_id == user.id
+        )
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document job not found",
+        )
+
+    # Build detail response
+    response = DocumentJobDetailResponse(
+        id=str(job.id),
+        original_filename=job.original_filename,
+        file_size_bytes=job.file_size_bytes,
+        source_lang=job.source_lang,
+        target_lang=job.target_lang,
+        provider=job.provider,
+        status=job.status,
+        error_message=job.error_message,
+        created_at=job.created_at.isoformat(),
+        completed_at=job.completed_at.isoformat() if job.completed_at else None,
+    )
+
+    # Include result info if completed
+    if job.result:
+        response.chunk_count = job.result.chunk_count
+        response.total_characters = job.result.total_characters
+        # Preview: first 500 characters of translated content
+        response.translated_preview = job.result.translated_content[:500]
+
+    return response
+
+
+@router.get("/jobs/{job_id}/download", response_model=DocumentDownloadResponse)
+async def download_translated_document(
+    job_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DocumentDownloadResponse:
+    """Download the translated document content.
+
+    Only available for completed jobs.
+    """
+    result = await db.execute(
+        select(DocumentJob).where(
+            DocumentJob.id == job_id, DocumentJob.user_id == user.id
+        )
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document job not found",
+        )
+
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Job is not completed yet. Current status: {job.status}",
+        )
+
+    if not job.result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Translation result not found",
+        )
+
+    return DocumentDownloadResponse(
+        job_id=str(job.id),
+        original_filename=job.original_filename,
+        translated_content=job.result.translated_content,
+        chunk_count=job.result.chunk_count,
+        total_characters=job.result.total_characters,
+    )
