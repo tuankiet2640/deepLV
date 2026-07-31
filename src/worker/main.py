@@ -4,6 +4,8 @@ from typing import AsyncIterator
 
 import structlog
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
+from prometheus_client import Counter, Histogram, generate_latest
 from pydantic import BaseModel, Field
 
 from src.shared.config import WorkerSettings
@@ -16,6 +18,33 @@ settings = WorkerSettings()
 
 model_cache: ModelCache | None = None
 start_time: float = 0
+
+# Worker-specific metrics
+WORKER_MODEL_LOAD_TIME = Histogram(
+    "deeplv_worker_model_load_seconds",
+    "Time to load a translation model",
+    ["language_pair"],
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0],
+)
+
+WORKER_INFERENCE_LATENCY = Histogram(
+    "deeplv_worker_inference_seconds",
+    "Translation inference latency by language pair",
+    ["source_lang", "target_lang"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+)
+
+WORKER_TRANSLATIONS_TOTAL = Counter(
+    "deeplv_worker_translations_total",
+    "Total translations processed by worker",
+    ["source_lang", "target_lang"],
+)
+
+WORKER_ERRORS_TOTAL = Counter(
+    "deeplv_worker_errors_total",
+    "Total translation errors in worker",
+    ["error_type"],
+)
 
 
 @asynccontextmanager
@@ -54,15 +83,25 @@ async def translate(req: TranslateRequest) -> TranslateResponse:
     assert model_cache is not None
 
     try:
+        inference_start = time.monotonic()
         result = translate_text(
             model_cache=model_cache,
             text=req.text,
             source_lang=req.source_lang,
             target_lang=req.target_lang,
         )
+        inference_elapsed = time.monotonic() - inference_start
+        WORKER_INFERENCE_LATENCY.labels(
+            source_lang=req.source_lang, target_lang=req.target_lang
+        ).observe(inference_elapsed)
+        WORKER_TRANSLATIONS_TOTAL.labels(
+            source_lang=req.source_lang, target_lang=req.target_lang
+        ).inc()
     except FileNotFoundError as e:
+        WORKER_ERRORS_TOTAL.labels(error_type="model_not_available").inc()
         raise HTTPException(status_code=503, detail=f"Model not available: {e}") from e
     except ValueError as e:
+        WORKER_ERRORS_TOTAL.labels(error_type="invalid_request").inc()
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     return TranslateResponse(**result)
@@ -83,3 +122,9 @@ async def health() -> dict:
 async def languages() -> dict:
     pairs = [{"source": s, "target": t} for s, t in sorted(SUPPORTED_PAIRS)]
     return {"supported_pairs": pairs, "total": len(pairs)}
+
+
+@app.get("/metrics")
+async def metrics() -> PlainTextResponse:
+    """Expose Prometheus metrics for the worker service."""
+    return PlainTextResponse(content=generate_latest(), media_type="text/plain")

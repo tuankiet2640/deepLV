@@ -2,7 +2,7 @@ import time
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
-from prometheus_client import Counter, Histogram, generate_latest
+from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
 REQUEST_COUNT = Counter(
     "deeplv_http_requests_total",
@@ -31,6 +31,28 @@ CACHE_HIT = Counter(
 CACHE_MISS = Counter(
     "deeplv_cache_misses_total",
     "Translation cache misses",
+)
+
+PROVIDER_TRANSLATION_COUNT = Counter(
+    "deeplv_provider_translations_total",
+    "Translations processed by provider",
+    ["provider"],
+)
+
+DOCUMENT_JOBS_COUNT = Counter(
+    "deeplv_document_jobs_total",
+    "Document translation jobs by status",
+    ["status"],
+)
+
+CREDITS_SPENT = Counter(
+    "deeplv_credits_spent_total",
+    "Total translation credits spent",
+)
+
+ACTIVE_PROVIDER_KEYS = Gauge(
+    "deeplv_active_provider_keys",
+    "Number of currently active provider API keys",
 )
 
 

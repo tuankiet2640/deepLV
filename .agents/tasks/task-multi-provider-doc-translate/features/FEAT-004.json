@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Full Observability Stack - Add Prometheus + Grafana to docker-compose for metrics visualization, structured JSON logging with correlation IDs, and pre-built Grafana dashboards. Extend existing Prometheus metrics with provider-specific counters and document translation metrics.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create monitoring/prometheus/prometheus.yml - Prometheus config that scrapes the API at :8000/metrics every 15s. Include job labels and scrape targets for api and worker services.",
     "Create monitoring/grafana/provisioning/datasources/prometheus.yml - auto-provision Prometheus as data source in Grafana.",
