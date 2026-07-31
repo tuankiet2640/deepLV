@@ -1,15 +1,32 @@
 import { Link, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
 
 const NAV_LINKS = [
   { to: "/translate", label: "Translate" },
+  { to: "/documents", label: "Documents" },
   { to: "/getting-started", label: "Get Started" },
   { to: "/api-reference", label: "API Reference" },
   { to: "/architecture", label: "Architecture" },
   { to: "/status", label: "Status" },
+  { to: "/settings", label: "Settings" },
 ];
 
 export function Header() {
   const location = useLocation();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    // Check if the current user is an admin by reading from stored user data
+    try {
+      const userData = localStorage.getItem("user");
+      if (userData) {
+        const user = JSON.parse(userData);
+        setIsAdmin(!!user.is_admin);
+      }
+    } catch {
+      setIsAdmin(false);
+    }
+  }, [location.pathname]);
 
   return (
     <header className="bg-dlv-blue text-white sticky top-0 z-50">
@@ -34,6 +51,18 @@ export function Header() {
               {link.label}
             </Link>
           ))}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+                location.pathname === "/admin"
+                  ? "bg-white/15 text-white font-medium"
+                  : "text-yellow-300 hover:text-white hover:bg-white/10"
+              }`}
+            >
+              Admin
+            </Link>
+          )}
         </nav>
         {/* Mobile menu */}
         <nav className="flex md:hidden items-center gap-2">
@@ -43,6 +72,14 @@ export function Header() {
           >
             Translate
           </Link>
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="px-3 py-1.5 bg-yellow-500/80 rounded-md text-sm font-medium"
+            >
+              Admin
+            </Link>
+          )}
         </nav>
       </div>
     </header>

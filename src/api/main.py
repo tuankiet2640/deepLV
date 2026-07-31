@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.metrics import metrics_middleware, metrics_response
 from src.api.middleware.rate_limit import RateLimiter
-from src.api.routers import auth, health, keys, translate, usage
+from src.api.routers import admin, auth, health, keys, translate, usage, providers, credits, documents
 from src.api.services.cache import TranslationCache
 from src.shared.config import APISettings
 from src.shared.logging import setup_logging
@@ -29,6 +29,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     log.info("database_tables_ready")
+
+    # Sweep orphaned document jobs stuck in "processing" state
+    from src.api.database import async_session as session_factory
+    from src.api.models.document_job import DocumentJob
+    from sqlalchemy import update
+    from datetime import datetime, timezone
+
+    async with session_factory() as session:
+        result = await session.execute(
+            update(DocumentJob)
+            .where(DocumentJob.status.in_(["processing", "pending"]))
+            .values(
+                status="failed",
+                error_message="Job interrupted by server restart",
+                completed_at=datetime.now(timezone.utc),
+            )
+        )
+        if result.rowcount > 0:
+            await session.commit()
+            log.warning("orphaned_jobs_recovered", count=result.rowcount)
+        else:
+            await session.commit()
 
     # Initialize Redis
     redis_client = redis.from_url(settings.redis_url, decode_responses=True)
@@ -86,6 +108,10 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(keys.router, prefix="/api/v1")
 app.include_router(translate.router, prefix="/api/v1")
 app.include_router(usage.router, prefix="/api/v1")
+app.include_router(providers.router, prefix="/api/v1")
+app.include_router(credits.router, prefix="/api/v1")
+app.include_router(documents.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 
 
 # Metrics endpoint (outside /api/v1 — for Prometheus scraping)

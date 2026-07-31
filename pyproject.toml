@@ -22,6 +22,12 @@ dependencies = [
     "transformers>=4.41.0",
     "fasttext-langdetect>=1.0.5",
     "torch>=2.3.0",
+    "openai>=1.30.0",
+    "google-cloud-translate>=3.15.0",
+    "python-docx>=1.1.0",
+    "pypdf>=4.2.0",
+    "python-multipart>=0.0.9",
+    "cryptography>=42.0.0",
 ]
 
 [project.optional-dependencies]

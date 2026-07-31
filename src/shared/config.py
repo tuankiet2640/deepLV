@@ -15,6 +15,17 @@ class APISettings(BaseSettings):
     rate_limit_requests: int = 100
     rate_limit_window_seconds: int = 60
 
+    # Encryption key for API keys stored in the database (Fernet-based)
+    encryption_key: str = "change-this-in-production-to-a-random-secret"
+
+    # Admin provider keys (used when users pay credits)
+    admin_openai_key: str = ""
+    admin_huggingface_key: str = ""
+    admin_google_key: str = ""
+
+    # Credit pricing
+    credit_cost_per_1k_chars: float = 5.0
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

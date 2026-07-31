@@ -1,7 +1,6 @@
 import asyncio
 import time
 
-import httpx
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -13,6 +12,8 @@ from src.api.models.api_key import APIKey
 from src.api.models.usage_log import UsageLog
 from src.api.models.user import User
 from src.api.services.language_detect import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, detect_language
+from src.api.services.provider_manager import ProviderManager
+from src.api.services.providers.base import ProviderError
 
 log = structlog.get_logger()
 router = APIRouter(tags=["translate"])
@@ -22,6 +23,8 @@ class TranslateRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000)
     source_lang: str = Field(..., pattern=r"^(auto|[a-z]{2})$")
     target_lang: str = Field(..., pattern=r"^[a-z]{2}$")
+    provider: str = Field(default="marianmt", pattern=r"^(marianmt|openai|huggingface|google)$")
+    provider_key_id: str | None = Field(default=None)
 
 
 class TranslateResponse(BaseModel):
@@ -31,6 +34,7 @@ class TranslateResponse(BaseModel):
     detected_lang: bool
     cached: bool
     latency_ms: float
+    provider: str = "marianmt"
 
 
 class LanguageInfo(BaseModel):
@@ -82,6 +86,7 @@ async def translate(
             detected_lang=detected,
             cached=False,
             latency_ms=round(elapsed, 1),
+            provider=req.provider,
         )
 
     # Cache check
@@ -96,36 +101,44 @@ async def translate(
             detected_lang=detected,
             cached=True,
             latency_ms=round(elapsed, 1),
+            provider=req.provider,
         )
         asyncio.create_task(_log_usage(
             db, user.id, api_key.id, source_lang, req.target_lang,
-            len(req.text), True, round(elapsed, 1),
+            len(req.text), True, round(elapsed, 1), req.provider,
         ))
         return response
 
-    # Forward to model worker
-    worker_url = request.app.state.settings.model_worker_url
+    # Route through ProviderManager
+    settings = request.app.state.settings
+    provider_manager = ProviderManager(settings)
+
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{worker_url}/translate",
-                json={
-                    "text": req.text,
-                    "source_lang": source_lang,
-                    "target_lang": req.target_lang,
-                },
+        provider = await provider_manager.get_provider(
+            provider_name=req.provider,
+            user=user,
+            db=db,
+            provider_key_id=req.provider_key_id,
+        )
+    except ProviderError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Deduct credits if using admin key (non-BYOK, non-free)
+    if req.provider != "marianmt" and not req.provider_key_id:
+        has_credits = await provider_manager.deduct_credits(
+            user=user, db=db, provider_name=req.provider, char_count=len(req.text)
+        )
+        if not has_credits:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="Insufficient credits. Purchase credits or use your own API key.",
             )
-    except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="Translation service unavailable")
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Translation timed out")
 
-    if resp.status_code != 200:
-        log.error("worker_error", status=resp.status_code, body=resp.text)
-        raise HTTPException(status_code=503, detail="Translation failed")
-
-    worker_result = resp.json()
-    translated_text = worker_result["translated_text"]
+    # Translate using the resolved provider
+    try:
+        translated_text = await provider.translate(req.text, source_lang, req.target_lang)
+    except ProviderError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
     # Cache the result
     await cache.set(source_lang, req.target_lang, req.text, {
@@ -139,7 +152,7 @@ async def translate(
     # Log usage asynchronously
     asyncio.create_task(_log_usage(
         db, user.id, api_key.id, source_lang, req.target_lang,
-        len(req.text), False, round(elapsed, 1),
+        len(req.text), False, round(elapsed, 1), req.provider,
     ))
 
     return TranslateResponse(
@@ -149,6 +162,7 @@ async def translate(
         detected_lang=detected,
         cached=False,
         latency_ms=round(elapsed, 1),
+        provider=req.provider,
     )
 
 
@@ -170,6 +184,7 @@ async def _log_usage(
     char_count: int,
     cached: bool,
     latency_ms: float,
+    provider: str = "marianmt",
 ) -> None:
     try:
         async with db.begin():
@@ -181,6 +196,7 @@ async def _log_usage(
                 character_count=char_count,
                 cached=cached,
                 latency_ms=int(latency_ms),
+                provider=provider,
             )
             db.add(usage)
     except Exception:
