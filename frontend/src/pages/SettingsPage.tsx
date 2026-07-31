@@ -103,15 +103,15 @@ function ProviderKeysTab() {
   };
 
   if (loading) {
-    return <div className="text-center text-gray-500 py-8">Loading...</div>;
+    return <div className="text-center text-gray-500 dark:text-gray-400 py-8">Loading...</div>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-medium text-gray-900">Provider API Keys (BYOK)</h3>
-          <p className="text-sm text-gray-500">
+          <h3 className="font-medium text-gray-900 dark:text-gray-100">Provider API Keys (BYOK)</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Store your own API keys to use providers without spending credits.
           </p>
         </div>
@@ -124,13 +124,13 @@ function ProviderKeysTab() {
       </div>
 
       {showAddForm && (
-        <div className="border border-dlv-border rounded-lg p-4 bg-gray-50 space-y-3">
+        <div className="border border-dlv-border dark:border-dlv-dark-border rounded-lg p-4 bg-gray-50 dark:bg-dlv-dark-bg space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Provider</label>
             <select
               value={newProvider}
               onChange={(e) => setNewProvider(e.target.value)}
-              className="w-full border border-dlv-border rounded-md px-3 py-2 text-sm"
+              className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-200"
             >
               <option value="openai">OpenAI</option>
               <option value="huggingface">HuggingFace</option>
@@ -138,23 +138,23 @@ function ProviderKeysTab() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Label (optional)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Label (optional)</label>
             <input
               type="text"
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               placeholder="My production key"
-              className="w-full border border-dlv-border rounded-md px-3 py-2 text-sm"
+              className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-100"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
             <input
               type="password"
               value={newKey}
               onChange={(e) => setNewKey(e.target.value)}
               placeholder="sk-..."
-              className="w-full border border-dlv-border rounded-md px-3 py-2 text-sm"
+              className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-100"
             />
           </div>
           <button
@@ -174,11 +174,11 @@ function ProviderKeysTab() {
           {keys.map((key) => (
             <div
               key={key.id}
-              className="flex items-center justify-between border border-dlv-border rounded-lg px-4 py-3 bg-white"
+              className="flex items-center justify-between border border-dlv-border dark:border-dlv-dark-border rounded-lg px-4 py-3 bg-white dark:bg-dlv-dark-bg"
             >
               <div>
-                <span className="font-medium text-gray-900">{key.label}</span>
-                <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded capitalize">
+                <span className="font-medium text-gray-900 dark:text-gray-100">{key.label}</span>
+                <span className="ml-2 text-xs bg-gray-100 dark:bg-dlv-dark-border text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded capitalize">
                   {key.provider}
                 </span>
                 <p className="text-xs text-gray-400 mt-0.5">
@@ -187,7 +187,7 @@ function ProviderKeysTab() {
               </div>
               <button
                 onClick={() => handleDelete(key.id)}
-                className="text-red-500 hover:text-red-700 text-sm font-medium"
+                className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium"
               >
                 Remove
               </button>
@@ -249,32 +249,32 @@ function CreditsTab() {
   };
 
   if (loading) {
-    return <div className="text-center text-gray-500 py-8">Loading...</div>;
+    return <div className="text-center text-gray-500 dark:text-gray-400 py-8">Loading...</div>;
   }
 
   return (
     <div className="space-y-6">
       {/* Balance */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">
-        <p className="text-sm text-gray-600">Current Balance</p>
-        <p className="text-3xl font-bold text-gray-900 mt-1">
-          {balance?.balance ?? 0} <span className="text-lg font-normal text-gray-500">credits</span>
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-100 dark:border-blue-800">
+        <p className="text-sm text-gray-600 dark:text-gray-400">Current Balance</p>
+        <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">
+          {balance?.balance ?? 0} <span className="text-lg font-normal text-gray-500 dark:text-gray-400">credits</span>
         </p>
       </div>
 
       {/* Purchase options */}
       <div>
-        <h3 className="font-medium text-gray-900 mb-3">Purchase Credits</h3>
+        <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Purchase Credits</h3>
         <div className="grid grid-cols-3 gap-3">
           {[10, 50, 100].map((amount) => (
             <button
               key={amount}
               onClick={() => handlePurchase(amount)}
               disabled={purchasing}
-              className="border border-dlv-border rounded-lg py-3 px-4 hover:border-dlv-accent hover:bg-blue-50 transition-all disabled:opacity-50 text-center"
+              className="border border-dlv-border dark:border-dlv-dark-border rounded-lg py-3 px-4 hover:border-dlv-accent hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all disabled:opacity-50 text-center"
             >
-              <span className="block text-lg font-bold text-gray-900">{amount}</span>
-              <span className="block text-xs text-gray-500">credits</span>
+              <span className="block text-lg font-bold text-gray-900 dark:text-gray-100">{amount}</span>
+              <span className="block text-xs text-gray-500 dark:text-gray-400">credits</span>
             </button>
           ))}
         </div>
@@ -282,7 +282,7 @@ function CreditsTab() {
 
       {/* Transaction history */}
       <div>
-        <h3 className="font-medium text-gray-900 mb-3">Transaction History</h3>
+        <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Transaction History</h3>
         {transactions.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-4">No transactions yet.</p>
         ) : (
@@ -290,17 +290,17 @@ function CreditsTab() {
             {transactions.map((tx) => (
               <div
                 key={tx.id}
-                className="flex items-center justify-between border border-dlv-border rounded-lg px-4 py-3 bg-white"
+                className="flex items-center justify-between border border-dlv-border dark:border-dlv-dark-border rounded-lg px-4 py-3 bg-white dark:bg-dlv-dark-bg"
               >
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{tx.description}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{tx.description}</p>
                   <p className="text-xs text-gray-400">
                     {new Date(tx.created_at).toLocaleString()}
                   </p>
                 </div>
                 <span
                   className={`font-medium text-sm ${
-                    tx.amount > 0 ? "text-green-600" : "text-red-600"
+                    tx.amount > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
                   }`}
                 >
                   {tx.amount > 0 ? "+" : ""}
@@ -326,15 +326,15 @@ export function SettingsPage() {
   return (
     <div className="max-w-4xl mx-auto w-full px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Manage your provider API keys and translation credits.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-dlv-border">
+      <div className="bg-white dark:bg-dlv-dark-card rounded-xl shadow-sm border border-dlv-border dark:border-dlv-dark-border">
         {/* Tab navigation */}
-        <div className="border-b border-dlv-border px-4">
+        <div className="border-b border-dlv-border dark:border-dlv-dark-border px-4">
           <nav className="flex gap-4">
             {tabs.map((tab) => (
               <button
@@ -343,7 +343,7 @@ export function SettingsPage() {
                 className={`py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
                   activeTab === tab.id
                     ? "border-dlv-accent text-dlv-accent"
-                    : "border-transparent text-gray-500 hover:text-gray-700"
+                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                 }`}
               >
                 {tab.label}

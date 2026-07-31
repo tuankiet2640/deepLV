@@ -1,6 +1,58 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
+
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+
+  const icon =
+    theme === "dark" ? (
+      // Moon icon
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
+        />
+      </svg>
+    ) : theme === "light" ? (
+      // Sun icon
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+        />
+      </svg>
+    ) : (
+      // System/monitor icon
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+        />
+      </svg>
+    );
+
+  const label = theme === "dark" ? "Dark" : theme === "light" ? "Light" : "System";
+
+  return (
+    <button
+      onClick={toggleTheme}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+      title={`Theme: ${label}. Click to cycle.`}
+      aria-label={`Current theme: ${label}. Click to change.`}
+    >
+      {icon}
+      <span className="hidden lg:inline text-xs">{label}</span>
+    </button>
+  );
+}
 
 const NAV_LINKS = [
   { to: "/translate", label: "Translate" },
@@ -77,6 +129,8 @@ export function Header() {
               Admin
             </Link>
           )}
+          {/* Theme toggle */}
+          <ThemeToggle />
           {/* Auth section */}
           {isAuthenticated ? (
             <div className="relative ml-2" ref={dropdownRef}>
@@ -103,26 +157,26 @@ export function Header() {
                 </svg>
               </button>
               {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-dlv-border py-1 z-50">
-                  <div className="px-4 py-2 border-b border-dlv-border">
-                    <p className="text-xs text-gray-500">Signed in as</p>
-                    <p className="text-sm font-medium text-gray-900 truncate">{user?.email}</p>
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dlv-dark-card rounded-lg shadow-lg border border-dlv-border dark:border-dlv-dark-border py-1 z-50">
+                  <div className="px-4 py-2 border-b border-dlv-border dark:border-dlv-dark-border">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Signed in as</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user?.email}</p>
                   </div>
                   <Link
                     to="/api-keys"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
                   >
                     API Keys
                   </Link>
                   <Link
                     to="/settings"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
                   >
                     Settings
                   </Link>
                   <button
                     onClick={handleLogout}
-                    className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    className="block w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                   >
                     Sign out
                   </button>

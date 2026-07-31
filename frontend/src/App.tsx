@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -20,7 +21,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <div className="min-h-screen flex flex-col bg-dlv-surface">
+        <ThemeProvider>
+        <div className="min-h-screen flex flex-col bg-dlv-surface dark:bg-dlv-dark-bg transition-colors">
           <Header />
           <main className="flex-1">
             <Routes>
@@ -61,6 +63,7 @@ export default function App() {
           </main>
           <Footer />
         </div>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

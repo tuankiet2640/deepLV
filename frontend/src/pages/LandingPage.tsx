@@ -302,15 +302,15 @@ export function LandingPage() {
       </section>
 
       {/* Stats Bar */}
-      <section className="bg-white border-b border-dlv-border">
+      <section className="bg-white dark:bg-dlv-dark-card border-b border-dlv-border dark:border-dlv-dark-border">
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {STATS.map((stat) => (
               <div key={stat.label} className="text-center">
-                <div className="text-2xl md:text-3xl font-bold text-dlv-blue">
+                <div className="text-2xl md:text-3xl font-bold text-dlv-blue dark:text-dlv-accent">
                   {stat.value}
                 </div>
-                <div className="text-sm text-gray-500 mt-1">{stat.label}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">{stat.label}</div>
               </div>
             ))}
           </div>
@@ -318,13 +318,13 @@ export function LandingPage() {
       </section>
 
       {/* How It Works */}
-      <section className="py-20 bg-dlv-surface">
+      <section className="py-20 bg-dlv-surface dark:bg-dlv-dark-bg">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
               How It Works
             </h2>
-            <p className="text-gray-500 max-w-xl mx-auto text-lg">
+            <p className="text-gray-500 dark:text-gray-400 max-w-xl mx-auto text-lg">
               Three simple steps to translate any content
             </p>
           </div>
@@ -332,19 +332,19 @@ export function LandingPage() {
             {STEPS.map((step, i) => (
               <div key={step.step} className="relative">
                 {i < STEPS.length - 1 && (
-                  <div className="hidden md:block absolute top-12 left-full w-full h-px border-t-2 border-dashed border-dlv-border -translate-x-1/2 z-0" />
+                  <div className="hidden md:block absolute top-12 left-full w-full h-px border-t-2 border-dashed border-dlv-border dark:border-dlv-dark-border -translate-x-1/2 z-0" />
                 )}
-                <div className="relative bg-white rounded-2xl p-8 shadow-sm border border-dlv-border text-center hover:shadow-md transition-shadow">
+                <div className="relative bg-white dark:bg-dlv-dark-card rounded-2xl p-8 shadow-sm border border-dlv-border dark:border-dlv-dark-border text-center hover:shadow-md transition-shadow">
                   <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-dlv-accent/10 text-dlv-accent mb-5">
                     {step.icon}
                   </div>
                   <div className="text-xs font-bold text-dlv-accent uppercase tracking-widest mb-2">
                     Step {step.step}
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-3">
                     {step.title}
                   </h3>
-                  <p className="text-gray-500 leading-relaxed">{step.description}</p>
+                  <p className="text-gray-500 dark:text-gray-400 leading-relaxed">{step.description}</p>
                 </div>
               </div>
             ))}
@@ -353,13 +353,13 @@ export function LandingPage() {
       </section>
 
       {/* Features Grid */}
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-white dark:bg-dlv-dark-card">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
               Everything You Need
             </h2>
-            <p className="text-gray-500 max-w-xl mx-auto text-lg">
+            <p className="text-gray-500 dark:text-gray-400 max-w-xl mx-auto text-lg">
               A complete translation platform built for developers and teams
             </p>
           </div>
@@ -367,15 +367,15 @@ export function LandingPage() {
             {FEATURES.map((feature) => (
               <div
                 key={feature.title}
-                className="group bg-white border border-dlv-border rounded-2xl p-7 hover:shadow-lg hover:border-dlv-accent/30 transition-all duration-200"
+                className="group bg-white dark:bg-dlv-dark-bg border border-dlv-border dark:border-dlv-dark-border rounded-2xl p-7 hover:shadow-lg hover:border-dlv-accent/30 transition-all duration-200"
               >
                 <div className="w-12 h-12 bg-dlv-accent/10 text-dlv-accent rounded-xl flex items-center justify-center mb-5 group-hover:bg-dlv-accent group-hover:text-white transition-colors">
                   {feature.icon}
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
                   {feature.title}
                 </h3>
-                <p className="text-gray-500 leading-relaxed text-sm">
+                <p className="text-gray-500 dark:text-gray-400 leading-relaxed text-sm">
                   {feature.description}
                 </p>
               </div>
@@ -385,13 +385,13 @@ export function LandingPage() {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-20 bg-dlv-surface">
+      <section id="pricing" className="py-20 bg-dlv-surface dark:bg-dlv-dark-bg">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
               Simple, Transparent Pricing
             </h2>
-            <p className="text-gray-500 max-w-xl mx-auto text-lg">
+            <p className="text-gray-500 dark:text-gray-400 max-w-xl mx-auto text-lg">
               Start free, scale with your own keys, or let us handle it
             </p>
           </div>
@@ -399,10 +399,10 @@ export function LandingPage() {
             {PRICING_TIERS.map((tier) => (
               <div
                 key={tier.name}
-                className={`relative bg-white rounded-2xl p-8 border-2 transition-shadow ${
+                className={`relative bg-white dark:bg-dlv-dark-card rounded-2xl p-8 border-2 transition-shadow ${
                   tier.highlight
                     ? "border-dlv-accent shadow-lg shadow-dlv-accent/10 scale-[1.02]"
-                    : "border-dlv-border hover:shadow-md"
+                    : "border-dlv-border dark:border-dlv-dark-border hover:shadow-md"
                 }`}
               >
                 {tier.highlight && (
@@ -410,14 +410,14 @@ export function LandingPage() {
                     Most Popular
                   </div>
                 )}
-                <h3 className="text-xl font-bold text-gray-900 mb-1">{tier.name}</h3>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">{tier.name}</h3>
                 <div className="flex items-baseline gap-1 mb-2">
-                  <span className="text-3xl font-bold text-dlv-blue">{tier.price}</span>
+                  <span className="text-3xl font-bold text-dlv-blue dark:text-dlv-accent">{tier.price}</span>
                   {tier.period && (
                     <span className="text-sm text-gray-400">{tier.period}</span>
                   )}
                 </div>
-                <p className="text-gray-500 text-sm mb-6">{tier.description}</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">{tier.description}</p>
                 <ul className="space-y-3 mb-8">
                   {tier.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-3 text-sm">
@@ -434,7 +434,7 @@ export function LandingPage() {
                           d="M5 13l4 4L19 7"
                         />
                       </svg>
-                      <span className="text-gray-600">{feature}</span>
+                      <span className="text-gray-600 dark:text-gray-300">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -443,7 +443,7 @@ export function LandingPage() {
                   className={`block w-full text-center py-3 rounded-lg font-semibold transition-colors ${
                     tier.highlight
                       ? "bg-dlv-accent text-white hover:bg-[#0065b8]"
-                      : "bg-dlv-surface text-gray-700 hover:bg-gray-200 border border-dlv-border"
+                      : "bg-dlv-surface dark:bg-dlv-dark-bg text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-dlv-dark-border border border-dlv-border dark:border-dlv-dark-border"
                   }`}
                 >
                   {tier.cta}
@@ -455,13 +455,13 @@ export function LandingPage() {
       </section>
 
       {/* Providers Showcase */}
-      <section className="py-20 bg-white border-y border-dlv-border">
+      <section className="py-20 bg-white dark:bg-dlv-dark-card border-y border-dlv-border dark:border-dlv-dark-border">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
               Translation Providers
             </h2>
-            <p className="text-gray-500 max-w-xl mx-auto text-lg">
+            <p className="text-gray-500 dark:text-gray-400 max-w-xl mx-auto text-lg">
               Choose the best engine for your needs, or use them all
             </p>
           </div>
@@ -469,18 +469,18 @@ export function LandingPage() {
             {PROVIDERS.map((provider) => (
               <div
                 key={provider.name}
-                className="bg-dlv-surface border border-dlv-border rounded-xl p-6 text-center hover:shadow-md transition-shadow"
+                className="bg-dlv-surface dark:bg-dlv-dark-bg border border-dlv-border dark:border-dlv-dark-border rounded-xl p-6 text-center hover:shadow-md transition-shadow"
               >
-                <div className="w-12 h-12 bg-white border border-dlv-border rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <span className="text-lg font-bold text-dlv-blue">
+                <div className="w-12 h-12 bg-white dark:bg-dlv-dark-card border border-dlv-border dark:border-dlv-dark-border rounded-xl flex items-center justify-center mx-auto mb-4">
+                  <span className="text-lg font-bold text-dlv-blue dark:text-dlv-accent">
                     {provider.name.charAt(0)}
                   </span>
                 </div>
-                <h3 className="font-semibold text-gray-900 mb-1">{provider.name}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{provider.name}</h3>
                 <span className="inline-block px-2 py-0.5 bg-dlv-accent/10 text-dlv-accent text-xs font-medium rounded-full mb-2">
                   {provider.tag}
                 </span>
-                <p className="text-xs text-gray-500">{provider.description}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{provider.description}</p>
               </div>
             ))}
           </div>
@@ -488,14 +488,14 @@ export function LandingPage() {
       </section>
 
       {/* Developer Section */}
-      <section className="py-20 bg-dlv-surface">
+      <section className="py-20 bg-dlv-surface dark:bg-dlv-dark-bg">
         <div className="max-w-6xl mx-auto px-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
                 Built API-First
               </h2>
-              <p className="text-gray-500 text-lg mb-6 leading-relaxed">
+              <p className="text-gray-500 dark:text-gray-400 text-lg mb-6 leading-relaxed">
                 Integrate translation into your application with a single API call. Full
                 REST API with JWT authentication, per-key rate limiting, and detailed
                 usage analytics.
@@ -522,7 +522,7 @@ export function LandingPage() {
                         d="M5 13l4 4L19 7"
                       />
                     </svg>
-                    <span className="text-gray-700">{item}</span>
+                    <span className="text-gray-700 dark:text-gray-300">{item}</span>
                   </li>
                 ))}
               </ul>

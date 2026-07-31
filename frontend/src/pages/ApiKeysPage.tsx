@@ -94,17 +94,17 @@ export function ApiKeysPage() {
   return (
     <div className="max-w-4xl mx-auto w-full px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">API Keys</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">API Keys</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Create and manage API keys for the translation endpoint. The translate API uses X-API-Key
           header authentication.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-dlv-border p-6 space-y-6">
+      <div className="bg-white dark:bg-dlv-dark-card rounded-xl shadow-sm border border-dlv-border dark:border-dlv-dark-border p-6 space-y-6">
         {/* Create Key Section */}
         <div className="flex items-center justify-between">
-          <h2 className="font-medium text-gray-900">Your Keys</h2>
+          <h2 className="font-medium text-gray-900 dark:text-gray-100">Your Keys</h2>
           <button
             onClick={() => {
               setShowCreate(!showCreate);
@@ -118,15 +118,15 @@ export function ApiKeysPage() {
         </div>
 
         {showCreate && (
-          <div className="border border-dlv-border rounded-lg p-4 bg-gray-50 space-y-3">
+          <div className="border border-dlv-border dark:border-dlv-dark-border rounded-lg p-4 bg-gray-50 dark:bg-dlv-dark-bg space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Key Name</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Key Name</label>
               <input
                 type="text"
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
                 placeholder="e.g., Production App"
-                className="w-full border border-dlv-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dlv-accent focus:border-transparent"
+                className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-dlv-accent focus:border-transparent"
               />
             </div>
             <button
@@ -141,12 +141,12 @@ export function ApiKeysPage() {
 
         {/* Newly Created Key Alert */}
         {createdKey && (
-          <div className="rounded-lg bg-green-50 border border-green-200 p-4">
-            <p className="text-sm font-medium text-green-800 mb-2">
+          <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-4">
+            <p className="text-sm font-medium text-green-800 dark:text-green-300 mb-2">
               Key created successfully! Copy it now - you will not be able to see it again.
             </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 bg-white border border-green-200 rounded px-3 py-2 text-sm font-mono text-gray-800 break-all">
+              <code className="flex-1 bg-white dark:bg-dlv-dark-bg border border-green-200 dark:border-green-800 rounded px-3 py-2 text-sm font-mono text-gray-800 dark:text-gray-200 break-all">
                 {createdKey}
               </code>
               <button
@@ -160,14 +160,14 @@ export function ApiKeysPage() {
         )}
 
         {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
             {error}
           </div>
         )}
 
         {/* Keys List */}
         {loading ? (
-          <div className="text-center text-gray-500 py-8">Loading...</div>
+          <div className="text-center text-gray-500 dark:text-gray-400 py-8">Loading...</div>
         ) : keys.length === 0 ? (
           <p className="text-sm text-gray-400 py-4 text-center">
             No API keys yet. Create one to start using the translation API.
@@ -177,11 +177,11 @@ export function ApiKeysPage() {
             {keys.map((key) => (
               <div
                 key={key.id}
-                className="flex items-center justify-between border border-dlv-border rounded-lg px-4 py-3 bg-white"
+                className="flex items-center justify-between border border-dlv-border dark:border-dlv-dark-border rounded-lg px-4 py-3 bg-white dark:bg-dlv-dark-bg"
               >
                 <div>
-                  <span className="font-medium text-gray-900">{key.name}</span>
-                  <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{key.name}</span>
+                  <span className="ml-2 text-xs bg-gray-100 dark:bg-dlv-dark-border text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded font-mono">
                     {key.prefix}...
                   </span>
                   <p className="text-xs text-gray-400 mt-0.5">
@@ -190,7 +190,7 @@ export function ApiKeysPage() {
                 </div>
                 <button
                   onClick={() => handleRevoke(key.id)}
-                  className="text-red-500 hover:text-red-700 text-sm font-medium"
+                  className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium"
                 >
                   Revoke
                 </button>
