@@ -32,6 +32,7 @@ desktop.ini
 
 # Claude Code / AI tooling
 .claude/
+.agents/
 claude-bootstrap.txt
 MEMORY.md
 
