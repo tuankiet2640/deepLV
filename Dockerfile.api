@@ -1,11 +1,15 @@
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
-RUN pip install --no-cache-dir pip-tools
-
 COPY pyproject.toml .
-RUN pip install --no-cache-dir . \
-    && pip install --no-cache-dir email-validator
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && pip install --no-cache-dir . \
+    && pip install --no-cache-dir email-validator \
+    && apt-get purge -y build-essential \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 FROM python:3.11-slim
 
@@ -23,7 +27,8 @@ COPY alembic.ini .
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=15s \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Single worker — Supabase handles the DB scaling, API is lightweight
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-keep-alive", "30"]
