@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
 
 const API_BASE = "/api/v1";
 
@@ -12,6 +13,7 @@ interface ApiKey {
 
 export function ApiKeysPage() {
   const { token } = useAuth();
+  const { showToast } = useToast();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -65,6 +67,7 @@ export function ApiKeysPage() {
       const data = await res.json();
       setCreatedKey(data.key);
       setNewKeyName("");
+      showToast("API key created successfully", "success");
       await fetchKeys();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create key");
@@ -79,9 +82,10 @@ export function ApiKeysPage() {
         method: "DELETE",
         headers: headers(),
       });
+      showToast("API key revoked", "success");
       await fetchKeys();
     } catch {
-      // Silently fail
+      showToast("Failed to revoke key", "error");
     }
   };
 

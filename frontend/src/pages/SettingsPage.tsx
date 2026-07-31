@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
 
 const API_BASE = "/api/v1";
 
@@ -38,6 +39,7 @@ function useAuthHeaders(): () => Record<string, string> {
 
 function ProviderKeysTab() {
   const getAuthHeaders = useAuthHeaders();
+  const { showToast } = useToast();
   const [keys, setKeys] = useState<ProviderKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -81,10 +83,11 @@ function ProviderKeysTab() {
         setNewKey("");
         setNewLabel("");
         setShowAddForm(false);
+        showToast("Provider key saved successfully", "success");
         await fetchKeys();
       }
     } catch {
-      // Silently fail
+      showToast("Failed to save provider key", "error");
     } finally {
       setSaving(false);
     }
@@ -96,9 +99,10 @@ function ProviderKeysTab() {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
+      showToast("Provider key removed", "success");
       await fetchKeys();
     } catch {
-      // Silently fail
+      showToast("Failed to remove key", "error");
     }
   };
 
