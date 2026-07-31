@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -39,7 +39,7 @@ async def get_usage(
     key_id: str | None = Query(None),
     days: int = Query(30, ge=1, le=90),
 ) -> UsageResponse:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     base_filter = [UsageLog.user_id == user.id, UsageLog.created_at >= cutoff]
     if key_id:
         base_filter.append(UsageLog.api_key_id == key_id)
@@ -49,7 +49,9 @@ async def get_usage(
         func.count().label("total_requests"),
         func.coalesce(func.sum(UsageLog.character_count), 0).label("total_characters"),
         func.coalesce(
-            func.sum(case((UsageLog.cached.is_(True), 1), else_=0)) * 1.0 / func.nullif(func.count(), 0),
+            func.sum(case((UsageLog.cached.is_(True), 1), else_=0))
+            * 1.0
+            / func.nullif(func.count(), 0),
             0,
         ).label("cache_hit_rate"),
     ).where(*base_filter)

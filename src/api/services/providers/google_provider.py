@@ -37,9 +37,7 @@ class GoogleProvider(TranslationProvider):
         except httpx.TimeoutException:
             raise ProviderError(self.provider_name, "Google Translate request timed out")
         except httpx.ConnectError:
-            raise ProviderError(
-                self.provider_name, "Could not connect to Google Translate API"
-            )
+            raise ProviderError(self.provider_name, "Could not connect to Google Translate API")
 
         if resp.status_code == 401 or resp.status_code == 403:
             raise ProviderError(self.provider_name, "Invalid Google API key")

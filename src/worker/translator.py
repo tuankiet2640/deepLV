@@ -20,7 +20,10 @@ def translate_text(
     source_lang: str,
     target_lang: str,
 ) -> dict:
-    """Translate text using the appropriate model. Handles pivot translation for non-English pairs."""
+    """Translate text using the appropriate model.
+
+    Handles pivot translation for non-English pairs.
+    """
     start = time.monotonic()
 
     if source_lang == target_lang:

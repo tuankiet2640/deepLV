@@ -4,7 +4,7 @@ Provides endpoints for admin users to manage users, view usage analytics,
 manage admin provider keys, and update system settings.
 """
 
-import uuid
+from datetime import UTC
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.database import get_db
 from src.api.middleware.admin import get_admin_user
 from src.api.models.admin_provider_key import AdminProviderKey
-from src.api.models.admin_settings import AdminSetting, DEFAULT_SETTINGS
+from src.api.models.admin_settings import DEFAULT_SETTINGS, AdminSetting
 from src.api.models.usage_log import UsageLog
 from src.api.models.user import User
 from src.api.services.encryption import encrypt_api_key
@@ -276,9 +276,9 @@ async def get_usage_analytics(
     total_users = users_result.scalar_one()
 
     # Active users in last 30 days (users with at least one usage log)
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
     active_result = await db.execute(
         select(func.count(func.distinct(UsageLog.user_id))).where(
             UsageLog.created_at >= thirty_days_ago
@@ -293,9 +293,7 @@ async def get_usage_analytics(
             func.count(UsageLog.id).label("count"),
         ).group_by(func.coalesce(UsageLog.provider, "marianmt"))
     )
-    translations_by_provider = {
-        row.provider: row.count for row in provider_result.all()
-    }
+    translations_by_provider = {row.provider: row.count for row in provider_result.all()}
 
     # Translations by language pair (top 10)
     lang_pair_result = await db.execute(
@@ -357,9 +355,7 @@ async def list_admin_provider_keys(
     db: AsyncSession = Depends(get_db),
 ) -> AdminProviderKeyListResponse:
     """List all admin provider keys."""
-    result = await db.execute(
-        select(AdminProviderKey).order_by(AdminProviderKey.created_at.desc())
-    )
+    result = await db.execute(select(AdminProviderKey).order_by(AdminProviderKey.created_at.desc()))
     keys = result.scalars().all()
     return AdminProviderKeyListResponse(
         keys=[
@@ -419,14 +415,10 @@ async def delete_admin_provider_key(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete an admin provider key."""
-    result = await db.execute(
-        select(AdminProviderKey).where(AdminProviderKey.id == key_id)
-    )
+    result = await db.execute(select(AdminProviderKey).where(AdminProviderKey.id == key_id))
     key = result.scalar_one_or_none()
     if not key:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Provider key not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider key not found")
 
     await db.delete(key)
     await db.commit()
@@ -490,9 +482,7 @@ async def update_settings(
                 )
 
         # Upsert the setting
-        result = await db.execute(
-            select(AdminSetting).where(AdminSetting.key == key)
-        )
+        result = await db.execute(select(AdminSetting).where(AdminSetting.key == key))
         existing = result.scalar_one_or_none()
         if existing:
             existing.value = value

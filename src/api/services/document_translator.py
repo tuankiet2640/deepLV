@@ -4,7 +4,7 @@ Translates parsed document chunks using the ProviderManager,
 tracks progress, and stores results in the database.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,7 +85,7 @@ class DocumentTranslator:
                     )
                     job.status = "failed"
                     job.error_message = "Insufficient credits for document translation"
-                    job.completed_at = datetime.now(timezone.utc)
+                    job.completed_at = datetime.now(UTC)
                     await db.commit()
                     return
 
@@ -124,9 +124,7 @@ class DocumentTranslator:
                         error=str(chunk_err),
                     )
                     # If a chunk fails, include error marker but continue
-                    translated_chunks.append(
-                        f"[Translation error in section {i + 1}: {chunk_err}]"
-                    )
+                    translated_chunks.append(f"[Translation error in section {i + 1}: {chunk_err}]")
 
             # Reassemble translated content
             translated_content = "\n\n".join(translated_chunks)
@@ -142,7 +140,7 @@ class DocumentTranslator:
 
             # Update job status
             job.status = "completed"
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
             await db.commit()
 
             log.info(
@@ -160,5 +158,5 @@ class DocumentTranslator:
             )
             job.status = "failed"
             job.error_message = str(e)
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
             await db.commit()

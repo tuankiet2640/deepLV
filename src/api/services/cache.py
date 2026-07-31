@@ -34,9 +34,7 @@ class TranslationCache:
             log.warning("cache_get_error", key=key[:32], exc_info=True)
         return None
 
-    async def set(
-        self, source_lang: str, target_lang: str, text: str, result: dict
-    ) -> None:
+    async def set(self, source_lang: str, target_lang: str, text: str, result: dict) -> None:
         key = _cache_key(source_lang, target_lang, text)
         try:
             await self._redis.set(key, json.dumps(result), ex=CACHE_TTL)

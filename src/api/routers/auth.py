@@ -45,7 +45,10 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)) -> 
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     if len(req.password) < 8:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters",
+        )
 
     user = User(email=req.email, password_hash=hash_password(req.password))
     db.add(user)

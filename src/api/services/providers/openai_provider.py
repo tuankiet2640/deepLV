@@ -68,9 +68,7 @@ class OpenAIProvider(TranslationProvider):
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
-                    "https://api.openai.com/v1/models", headers=headers
-                )
+                resp = await client.get("https://api.openai.com/v1/models", headers=headers)
                 return resp.status_code == 200
         except Exception:
             return False

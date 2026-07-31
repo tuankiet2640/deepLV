@@ -53,9 +53,7 @@ class ProvidersListResponse(BaseModel):
 @router.get("", response_model=ProvidersListResponse)
 async def list_providers() -> ProvidersListResponse:
     """List all available translation providers with pricing info."""
-    return ProvidersListResponse(
-        providers=[ProviderInfoResponse(**info) for info in PROVIDER_INFO]
-    )
+    return ProvidersListResponse(providers=[ProviderInfoResponse(**info) for info in PROVIDER_INFO])
 
 
 @router.post("/keys", response_model=ProviderKeyResponse, status_code=status.HTTP_201_CREATED)
@@ -136,15 +134,11 @@ async def delete_provider_key(
 ) -> None:
     """Delete a stored provider key."""
     result = await db.execute(
-        select(ProviderKey).where(
-            ProviderKey.id == key_id, ProviderKey.user_id == user.id
-        )
+        select(ProviderKey).where(ProviderKey.id == key_id, ProviderKey.user_id == user.id)
     )
     key = result.scalar_one_or_none()
     if not key:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Provider key not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider key not found")
 
     await db.delete(key)
     await db.commit()
