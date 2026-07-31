@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "Frontend Document Upload UI and Provider Selection - Add a document translation page with file upload, provider selection dropdown, and job status tracking. Update the existing translate page to include provider choice. Add a user settings page for managing stored provider API keys and credits.",
+  "status": "pending",
+  "steps": [
+    "Create frontend/src/pages/DocumentTranslatePage.tsx - Page with: file upload dropzone (drag & drop or click), source/target language selectors, provider dropdown (MarianMT Free, OpenAI, HuggingFace, Google), option to use own key or pay credits, submit button, and a job history list showing status of previous uploads.",
+    "Create frontend/src/components/FileUpload.tsx - Reusable drag-and-drop file upload component with file type validation (PDF, DOCX, TXT) and size limit display.",
+    "Create frontend/src/components/ProviderSelector.tsx - Reusable provider selection component showing: provider name, pricing info (free vs credit cost), and whether user has stored a key for it.",
+    "Create frontend/src/components/JobStatusCard.tsx - Card component showing document translation job status (pending/processing/completed/failed), with download button when complete.",
+    "Create frontend/src/pages/SettingsPage.tsx - User settings page with tabs: API Keys (existing functionality), Provider Keys (manage BYOK keys for each provider), Credits (view balance, purchase credits).",
+    "Create frontend/src/hooks/useDocumentTranslation.ts - Hook for document upload API calls (upload file, poll job status, download result).",
+    "Update frontend/src/pages/TranslatePage.tsx - Add provider selector below language bar, allowing users to choose translation provider for text translation too.",
+    "Update frontend/src/App.tsx - Add routes for /documents and /settings.",
+    "Update frontend/src/components/Header.tsx - Add navigation links for Documents and Settings."
+  ],
+  "acceptance_criteria": [
+    "Document translate page allows file upload via drag-and-drop or file picker",
+    "Only PDF, DOCX, TXT files are accepted with clear error for other types",
+    "Provider selector shows all available providers with pricing context",
+    "Job status updates are shown after upload submission",
+    "User settings page allows managing BYOK provider keys",
+    "Text translate page now includes provider selection option",
+    "All new pages are accessible via header navigation",
+    "Frontend builds successfully with TypeScript strict mode"
+  ],
+  "verification": [
+    "cd frontend && npm install && npm run build to verify frontend compiles with all new pages and components",
+    "Verify no TypeScript errors in the build output"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

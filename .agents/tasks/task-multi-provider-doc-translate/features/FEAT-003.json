@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Admin Dashboard - Backend API endpoints for admin operations (user management, usage analytics, credit pricing, admin provider key management) plus a React frontend admin panel accessible to admin users. Includes admin role enforcement and admin-specific UI pages.",
+  "status": "pending",
+  "steps": [
+    "Create src/api/middleware/admin.py - get_admin_user dependency that checks user.is_admin flag, returns 403 if not admin.",
+    "Create src/api/routers/admin.py - admin endpoints: GET /api/v1/admin/users (list all users with usage stats), GET /api/v1/admin/users/{user_id} (user detail), PATCH /api/v1/admin/users/{user_id} (update is_admin, credits), GET /api/v1/admin/usage (global usage analytics), GET /api/v1/admin/provider-keys (list admin provider keys), POST /api/v1/admin/provider-keys (add admin provider key), DELETE /api/v1/admin/provider-keys/{id}, PATCH /api/v1/admin/settings (update credit pricing).",
+    "Create src/api/models/admin_settings.py - model for configurable settings like credit_cost_per_1k_chars, stored in DB so admin can change without restart.",
+    "Register admin router in src/api/main.py with prefix /api/v1/admin.",
+    "Create frontend/src/pages/AdminPage.tsx - admin dashboard with tabs: Users, Usage Analytics, Provider Keys, Settings. Uses Tailwind for styling consistent with existing pages.",
+    "Create frontend/src/components/admin/UserTable.tsx - table showing all users with email, credits, usage count, admin status toggle.",
+    "Create frontend/src/components/admin/UsageChart.tsx - simple chart/stats display showing global translation usage over time.",
+    "Create frontend/src/components/admin/ProviderKeyManager.tsx - UI to add/remove admin provider keys for each provider.",
+    "Create frontend/src/components/admin/SettingsPanel.tsx - form to adjust credit pricing and system settings.",
+    "Update frontend/src/App.tsx to add /admin route pointing to AdminPage.",
+    "Update frontend/src/components/Header.tsx to show Admin link when user has admin role."
+  ],
+  "acceptance_criteria": [
+    "Admin endpoints return 403 for non-admin users",
+    "Admin can list all users and see their usage statistics",
+    "Admin can manage provider keys (add/remove) that are used for credit-based translations",
+    "Admin can adjust credit pricing",
+    "Frontend admin page is accessible at /admin with proper navigation",
+    "Admin UI has tabs for Users, Usage, Provider Keys, and Settings",
+    "Non-admin users cannot see the Admin link in header"
+  ],
+  "verification": [
+    "Run pytest tests/ -v to confirm existing tests still pass",
+    "Run python -c 'from src.api.routers.admin import router; print(len(router.routes))' to verify admin router loads",
+    "cd frontend && npm run build to verify frontend compiles with new admin pages"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

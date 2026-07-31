@@ -1,0 +1,33 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Full Observability Stack - Add Prometheus + Grafana to docker-compose for metrics visualization, structured JSON logging with correlation IDs, and pre-built Grafana dashboards. Extend existing Prometheus metrics with provider-specific counters and document translation metrics.",
+  "status": "pending",
+  "steps": [
+    "Create monitoring/prometheus/prometheus.yml - Prometheus config that scrapes the API at :8000/metrics every 15s. Include job labels and scrape targets for api and worker services.",
+    "Create monitoring/grafana/provisioning/datasources/prometheus.yml - auto-provision Prometheus as data source in Grafana.",
+    "Create monitoring/grafana/provisioning/dashboards/dashboard.yml - provisioning config for dashboard auto-loading.",
+    "Create monitoring/grafana/dashboards/deeplv-overview.json - Grafana dashboard JSON with panels: request rate, latency percentiles, cache hit rate, translations by provider, active users, error rate, document jobs status.",
+    "Update docker-compose.yml to add prometheus service (prom/prometheus:latest, port 9090, mounts prometheus.yml), grafana service (grafana/grafana:latest, port 3001, mounts provisioning and dashboards, env vars for anonymous auth).",
+    "Update src/api/metrics.py - add new counters/histograms: deeplv_provider_translations_total (by provider), deeplv_document_jobs_total (by status), deeplv_credits_spent_total, deeplv_active_provider_keys_gauge.",
+    "Update src/shared/logging.py to ensure structlog outputs JSON format with timestamp, level, request_id, user_id fields for production log aggregation.",
+    "Add a /metrics endpoint to the worker service (src/worker/main.py) exposing worker-specific metrics (model load time, inference latency by language pair).",
+    "Update Dockerfile.api and Dockerfile.worker to include any needed dependencies for metrics."
+  ],
+  "acceptance_criteria": [
+    "docker compose config validates successfully with prometheus and grafana services",
+    "Prometheus config correctly targets API and worker /metrics endpoints",
+    "Grafana provisions with Prometheus data source and at least one dashboard automatically",
+    "New metrics track: translations by provider, document jobs, credits spent",
+    "Worker exposes /metrics endpoint with Prometheus format",
+    "Structured logging outputs valid JSON with correlation fields",
+    "Grafana accessible at port 3001 with no login required (anonymous auth enabled)"
+  ],
+  "verification": [
+    "Run docker compose config to validate the compose file syntax",
+    "Run python -c 'from src.api.metrics import PROVIDER_TRANSLATION_COUNT; print(\"OK\")' to verify new metrics exist",
+    "Run python -c 'import yaml; yaml.safe_load(open(\"monitoring/prometheus/prometheus.yml\")); print(\"Valid YAML\")' to check prometheus config"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

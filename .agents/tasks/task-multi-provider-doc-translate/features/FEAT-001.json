@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Multi-Provider Translation Engine - Create the provider abstraction layer that allows users to choose how their text is translated: (1) Built-in MarianMT models (free), (2) Bring-Your-Own-Key for OpenAI/HuggingFace/Google Translate, (3) Pay admin credits to use admin-managed API keys. Includes new SQLAlchemy models, provider service layer, credit system, and updated translate endpoint.",
+  "status": "in_progress",
+  "steps": [
+    "Create src/api/models/__init__.py with DeclarativeBase. Create src/api/models/user.py (User model with id, email, password_hash, is_admin, credits_balance, created_at). Create src/api/models/api_key.py (APIKey model). Create src/api/models/usage_log.py (UsageLog model). These files are currently referenced but do not exist physically.",
+    "Create src/api/models/provider_key.py - Model for user-stored provider API keys (user_id, provider enum [openai, huggingface, google, deepl], encrypted_api_key, label, created_at). Create src/api/models/admin_provider_key.py - Model for admin-managed provider keys (provider, encrypted_api_key, is_active, usage_count).",
+    "Create src/api/models/credit_transaction.py - Model for credit purchase/debit tracking (user_id, amount, transaction_type [purchase, debit, refund], description, created_at).",
+    "Create src/api/services/providers/__init__.py with a base TranslationProvider abstract class (async def translate(text, source_lang, target_lang) -> str). Create src/api/services/providers/marianmt.py - wraps existing worker HTTP call. Create src/api/services/providers/openai_provider.py - calls OpenAI GPT-4/3.5 for translation. Create src/api/services/providers/huggingface_provider.py - calls HuggingFace Inference API. Create src/api/services/providers/google_provider.py - calls Google Cloud Translation API.",
+    "Create src/api/services/provider_manager.py - ProviderManager class that: (a) resolves which provider to use based on request params, (b) handles BYOK vs admin-credit logic, (c) deducts credits for admin-key usage, (d) instantiates the correct provider with the right API key.",
+    "Create src/api/routers/providers.py - endpoints for users to manage their provider keys: POST /api/v1/providers/keys (store a key), GET /api/v1/providers/keys (list keys), DELETE /api/v1/providers/keys/{id}, GET /api/v1/providers (list available providers with pricing info).",
+    "Update src/api/routers/translate.py - extend TranslateRequest to accept optional provider field (marianmt|openai|huggingface|google) and optional provider_key_id. When provider is specified, route through ProviderManager instead of directly to worker. Default remains marianmt (free).",
+    "Create src/api/routers/credits.py - endpoints for credit management: GET /api/v1/credits/balance, POST /api/v1/credits/purchase (mock payment for now, adds credits), GET /api/v1/credits/transactions.",
+    "Update src/shared/config.py - add admin_openai_key, admin_huggingface_key, admin_google_key, credit_cost_per_1k_chars settings.",
+    "Register new routers in src/api/main.py (providers, credits).",
+    "Update pyproject.toml to add openai and google-cloud-translate dependencies."
+  ],
+  "acceptance_criteria": [
+    "TranslateRequest accepts optional provider and provider_key_id fields",
+    "Users can store their own API keys for OpenAI, HuggingFace, and Google via /api/v1/providers/keys",
+    "Translation using built-in MarianMT still works as default (no breaking change)",
+    "Provider abstraction cleanly supports adding new providers in the future",
+    "Credit system allows users to check balance and view transactions",
+    "Admin keys in config can be used when user pays credits",
+    "All new models have proper SQLAlchemy async patterns matching existing code style"
+  ],
+  "verification": [
+    "Run pytest tests/ -v to confirm existing tests still pass",
+    "Run python -c 'from src.api.services.providers import MarianMTProvider, OpenAIProvider, HuggingFaceProvider, GoogleProvider' to verify imports work",
+    "Run python -c 'from src.api.models import Base; print(Base.metadata.tables.keys())' to verify all models are registered"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

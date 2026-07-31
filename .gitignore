@@ -17,6 +17,7 @@ env/
 .pytest_cache/
 
 models/
+!src/api/models/
 *.bin
 
 node_modules/
