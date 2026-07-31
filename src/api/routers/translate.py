@@ -76,7 +76,10 @@ async def translate(
     if source_lang not in SUPPORTED_LANGUAGES:
         raise HTTPException(status_code=400, detail=f"Unsupported source language: {source_lang}")
     if req.target_lang not in SUPPORTED_LANGUAGES:
-        raise HTTPException(status_code=400, detail=f"Unsupported target language: {req.target_lang}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported target language: {req.target_lang}",
+        )
     if source_lang == req.target_lang:
         elapsed = (time.monotonic() - start) * 1000
         return TranslateResponse(
@@ -103,10 +106,19 @@ async def translate(
             latency_ms=round(elapsed, 1),
             provider=req.provider,
         )
-        asyncio.create_task(_log_usage(
-            db, user.id, api_key.id, source_lang, req.target_lang,
-            len(req.text), True, round(elapsed, 1), req.provider,
-        ))
+        asyncio.create_task(
+            _log_usage(
+                db,
+                user.id,
+                api_key.id,
+                source_lang,
+                req.target_lang,
+                len(req.text),
+                True,
+                round(elapsed, 1),
+                req.provider,
+            )
+        )
         return response
 
     # Route through ProviderManager
@@ -141,19 +153,33 @@ async def translate(
         raise HTTPException(status_code=503, detail=str(e))
 
     # Cache the result
-    await cache.set(source_lang, req.target_lang, req.text, {
-        "translated_text": translated_text,
-        "source_lang": source_lang,
-        "target_lang": req.target_lang,
-    })
+    await cache.set(
+        source_lang,
+        req.target_lang,
+        req.text,
+        {
+            "translated_text": translated_text,
+            "source_lang": source_lang,
+            "target_lang": req.target_lang,
+        },
+    )
 
     elapsed = (time.monotonic() - start) * 1000
 
     # Log usage asynchronously
-    asyncio.create_task(_log_usage(
-        db, user.id, api_key.id, source_lang, req.target_lang,
-        len(req.text), False, round(elapsed, 1), req.provider,
-    ))
+    asyncio.create_task(
+        _log_usage(
+            db,
+            user.id,
+            api_key.id,
+            source_lang,
+            req.target_lang,
+            len(req.text),
+            False,
+            round(elapsed, 1),
+            req.provider,
+        )
+    )
 
     return TranslateResponse(
         translated_text=translated_text,

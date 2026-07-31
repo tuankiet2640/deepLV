@@ -45,10 +45,10 @@ class _MockPipeline:
 async def client(mock_redis):
     with patch("src.api.main.redis") as redis_mod:
         redis_mod.from_url = lambda *args, **kwargs: mock_redis
-        from src.api.main import app
-
         # Initialize app.state that would normally be set by lifespan
         import time
+
+        from src.api.main import app
         from src.api.middleware.rate_limit import RateLimiter
         from src.api.services.cache import TranslationCache
         from src.shared.config import APISettings
@@ -79,7 +79,7 @@ async def test_languages_endpoint(client):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["languages"]) == 10
-    codes = {l["code"] for l in data["languages"]}
+    codes = {lang["code"] for lang in data["languages"]}
     assert "en" in codes
     assert "de" in codes
     assert "vi" in codes

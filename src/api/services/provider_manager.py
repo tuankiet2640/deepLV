@@ -120,16 +120,12 @@ class ProviderManager:
         )
         key_record = result.scalar_one_or_none()
         if not key_record:
-            raise ProviderError(
-                provider_name, "Provider key not found or does not match provider"
-            )
+            raise ProviderError(provider_name, "Provider key not found or does not match provider")
 
         api_key = decrypt_api_key(key_record.encrypted_api_key)
         return self._create_provider(provider_name, api_key)
 
-    async def _resolve_admin_key(
-        self, provider_name: str, db: AsyncSession
-    ) -> TranslationProvider:
+    async def _resolve_admin_key(self, provider_name: str, db: AsyncSession) -> TranslationProvider:
         """Resolve provider using admin-managed key (user pays credits)."""
         # Check for active admin key for this provider
         result = await db.execute(

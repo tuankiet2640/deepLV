@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.database import async_session, get_db
 from src.api.middleware.dependencies import get_current_user
 from src.api.models.document_job import DocumentJob
-from src.api.models.document_result import DocumentResult
 from src.api.models.user import User
 from src.api.services.document_parser import (
     SUPPORTED_FORMATS,
@@ -224,9 +223,7 @@ async def list_jobs(
     # Get total count
     from sqlalchemy import func
 
-    count_result = await db.execute(
-        select(func.count()).where(DocumentJob.user_id == user.id)
-    )
+    count_result = await db.execute(select(func.count()).where(DocumentJob.user_id == user.id))
     total = count_result.scalar() or 0
 
     # Get jobs
@@ -253,9 +250,7 @@ async def get_job_status(
 ) -> DocumentJobDetailResponse:
     """Get detailed status of a document translation job."""
     result = await db.execute(
-        select(DocumentJob).where(
-            DocumentJob.id == job_id, DocumentJob.user_id == user.id
-        )
+        select(DocumentJob).where(DocumentJob.id == job_id, DocumentJob.user_id == user.id)
     )
     job = result.scalar_one_or_none()
     if not job:
@@ -300,9 +295,7 @@ async def download_translated_document(
     with Content-Disposition header for file download.
     """
     result = await db.execute(
-        select(DocumentJob).where(
-            DocumentJob.id == job_id, DocumentJob.user_id == user.id
-        )
+        select(DocumentJob).where(DocumentJob.id == job_id, DocumentJob.user_id == user.id)
     )
     job = result.scalar_one_or_none()
     if not job:
@@ -324,7 +317,11 @@ async def download_translated_document(
         )
 
     # Generate a filename based on original
-    original_name = job.original_filename.rsplit(".", 1)[0] if "." in job.original_filename else job.original_filename
+    original_name = (
+        job.original_filename.rsplit(".", 1)[0]
+        if "." in job.original_filename
+        else job.original_filename
+    )
     download_filename = f"{original_name}-translated.txt"
 
     return PlainTextResponse(

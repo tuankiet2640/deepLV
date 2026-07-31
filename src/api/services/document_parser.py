@@ -187,9 +187,7 @@ class DocumentParser:
                     chunks.append(current_chunk.strip())
                 current_chunk = paragraph
             else:
-                current_chunk = (
-                    current_chunk + "\n\n" + paragraph if current_chunk else paragraph
-                )
+                current_chunk = current_chunk + "\n\n" + paragraph if current_chunk else paragraph
 
         # Don't forget the last chunk
         if current_chunk.strip():

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Optional
 
 import structlog
 
@@ -50,7 +49,7 @@ def setup_logging(level: str = "info") -> None:
     )
 
 
-def bind_request_context(request_id: Optional[str] = None, user_id: Optional[str] = None) -> None:
+def bind_request_context(request_id: str | None = None, user_id: str | None = None) -> None:
     """Bind request_id and user_id to the structlog context for correlation."""
     if request_id:
         structlog.contextvars.bind_contextvars(request_id=request_id)

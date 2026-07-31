@@ -99,9 +99,7 @@ async def revoke_key(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    result = await db.execute(
-        select(APIKey).where(APIKey.id == key_id, APIKey.user_id == user.id)
-    )
+    result = await db.execute(select(APIKey).where(APIKey.id == key_id, APIKey.user_id == user.id))
     api_key = result.scalar_one_or_none()
     if not api_key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")

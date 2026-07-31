@@ -1,12 +1,15 @@
-import uuid
-
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
 from src.api.models.api_key import APIKey
 from src.api.models.user import User
-from src.api.services.auth import decode_access_token, get_api_key_by_hash, get_user_by_id, hash_api_key
+from src.api.services.auth import (
+    decode_access_token,
+    get_api_key_by_hash,
+    get_user_by_id,
+    hash_api_key,
+)
 
 
 async def get_current_user(
@@ -15,12 +18,18 @@ async def get_current_user(
 ) -> User:
     """Extract and validate JWT from Authorization header."""
     if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header",
+        )
 
     token = authorization[7:]
     user_id = decode_access_token(token)
     if user_id is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
 
     user = await get_user_by_id(db, user_id)
     if user is None:

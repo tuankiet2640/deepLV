@@ -1,7 +1,8 @@
 import time
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from datetime import UTC
 
 import redis.asyncio as redis
 import structlog
@@ -10,7 +11,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.metrics import metrics_middleware, metrics_response
 from src.api.middleware.rate_limit import RateLimiter
-from src.api.routers import admin, auth, health, keys, translate, usage, providers, credits, documents
+from src.api.routers import (
+    admin,
+    auth,
+    credits,
+    documents,
+    health,
+    keys,
+    providers,
+    translate,
+    usage,
+)
 from src.api.services.cache import TranslationCache
 from src.shared.config import APISettings
 from src.shared.logging import setup_logging
@@ -26,15 +37,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Create database tables on startup
     from src.api.database import engine
     from src.api.models import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     log.info("database_tables_ready")
 
     # Sweep orphaned document jobs stuck in "processing" state
+    from datetime import datetime
+
+    from sqlalchemy import update
+
     from src.api.database import async_session as session_factory
     from src.api.models.document_job import DocumentJob
-    from sqlalchemy import update
-    from datetime import datetime, timezone
 
     async with session_factory() as session:
         result = await session.execute(
@@ -43,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             .values(
                 status="failed",
                 error_message="Job interrupted by server restart",
-                completed_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(UTC),
             )
         )
         if result.rowcount > 0:

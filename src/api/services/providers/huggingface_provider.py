@@ -54,9 +54,7 @@ class HuggingFaceProvider(TranslationProvider):
             )
         if resp.status_code != 200:
             log.error("huggingface_error", status=resp.status_code, body=resp.text[:200])
-            raise ProviderError(
-                self.provider_name, f"HuggingFace API error: {resp.status_code}"
-            )
+            raise ProviderError(self.provider_name, f"HuggingFace API error: {resp.status_code}")
 
         data = resp.json()
         if isinstance(data, list) and len(data) > 0:
@@ -68,9 +66,7 @@ class HuggingFaceProvider(TranslationProvider):
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
-                    "https://huggingface.co/api/whoami", headers=headers
-                )
+                resp = await client.get("https://huggingface.co/api/whoami", headers=headers)
                 return resp.status_code == 200
         except Exception:
             return False
