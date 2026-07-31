@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { TranslationPanel } from "../components/TranslationPanel";
+import { ProviderSelector } from "../components/ProviderSelector";
 import { useTranslation } from "../hooks/useTranslation";
 
 const LANGUAGES = [
@@ -22,6 +23,7 @@ export function TranslatePage() {
   const [sourceLang, setSourceLang] = useState("auto");
   const [targetLang, setTargetLang] = useState("de");
   const [sourceText, setSourceText] = useState("");
+  const [provider, setProvider] = useState("marianmt");
 
   const { translatedText, isLoading, error, latencyMs, cached, detectedLang } = useTranslation(
     sourceText,
@@ -91,6 +93,12 @@ export function TranslatePage() {
               ))}
             </select>
           </div>
+        </div>
+
+        {/* Provider selector */}
+        <div className="flex items-center border-b border-dlv-border px-4 py-2 bg-gray-50/50">
+          <span className="text-xs text-gray-500 mr-2">Provider:</span>
+          <ProviderSelector value={provider} onChange={setProvider} compact />
         </div>
 
         {/* Translation panels */}

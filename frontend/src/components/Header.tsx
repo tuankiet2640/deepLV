@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 
 const NAV_LINKS = [
   { to: "/translate", label: "Translate" },
+  { to: "/documents", label: "Documents" },
   { to: "/getting-started", label: "Get Started" },
   { to: "/api-reference", label: "API Reference" },
   { to: "/architecture", label: "Architecture" },
   { to: "/status", label: "Status" },
+  { to: "/settings", label: "Settings" },
 ];
 
 export function Header() {

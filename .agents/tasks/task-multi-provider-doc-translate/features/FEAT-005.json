@@ -2,7 +2,7 @@
   "id": "FEAT-005",
   "type": "feat",
   "description": "Frontend Document Upload UI and Provider Selection - Add a document translation page with file upload, provider selection dropdown, and job status tracking. Update the existing translate page to include provider choice. Add a user settings page for managing stored provider API keys and credits.",
-  "status": "pending",
+  "status": "in_progress",
   "steps": [
     "Create frontend/src/pages/DocumentTranslatePage.tsx - Page with: file upload dropzone (drag & drop or click), source/target language selectors, provider dropdown (MarianMT Free, OpenAI, HuggingFace, Google), option to use own key or pay credits, submit button, and a job history list showing status of previous uploads.",
     "Create frontend/src/components/FileUpload.tsx - Reusable drag-and-drop file upload component with file type validation (PDF, DOCX, TXT) and size limit display.",
