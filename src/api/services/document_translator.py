@@ -41,10 +41,11 @@ class DocumentTranslator:
 
         This is designed to run as a background task. It:
         1. Updates job status to processing
-        2. Chunks the text
-        3. Translates each chunk
-        4. Reassembles and stores the result
-        5. Updates job status to completed (or failed)
+        2. Reserves credits based on estimated character count (if using admin key)
+        3. Chunks the text
+        4. Translates each chunk
+        5. Reassembles and stores the result
+        6. Updates job status to completed (or failed)
 
         Args:
             job: The DocumentJob record to process.
@@ -66,6 +67,28 @@ class DocumentTranslator:
                 target_lang=job.target_lang,
             )
 
+            # Reserve credits BEFORE translation if using admin key
+            total_chars = len(text_content)
+            if not provider_key_id and job.provider != "marianmt":
+                credit_ok = await self.provider_manager.deduct_credits(
+                    user=user,
+                    db=db,
+                    provider_name=job.provider,
+                    char_count=total_chars,
+                )
+                if not credit_ok:
+                    log.warning(
+                        "insufficient_credits_for_document",
+                        job_id=str(job.id),
+                        user_id=str(user.id),
+                        estimated_chars=total_chars,
+                    )
+                    job.status = "failed"
+                    job.error_message = "Insufficient credits for document translation"
+                    job.completed_at = datetime.now(timezone.utc)
+                    await db.commit()
+                    return
+
             # Get the translation provider
             provider = await self.provider_manager.get_provider(
                 provider_name=job.provider,
@@ -77,7 +100,6 @@ class DocumentTranslator:
             # Chunk the text
             chunks = self.parser.chunk_text(text_content)
             translated_chunks: list[str] = []
-            total_chars = 0
 
             for i, chunk in enumerate(chunks):
                 try:
@@ -87,7 +109,6 @@ class DocumentTranslator:
                         target_lang=job.target_lang,
                     )
                     translated_chunks.append(translated)
-                    total_chars += len(chunk)
 
                     log.debug(
                         "chunk_translated",
@@ -106,22 +127,6 @@ class DocumentTranslator:
                     translated_chunks.append(
                         f"[Translation error in section {i + 1}: {chunk_err}]"
                     )
-
-            # Deduct credits if using admin key (not BYOK, not marianmt)
-            if not provider_key_id and job.provider != "marianmt":
-                credit_ok = await self.provider_manager.deduct_credits(
-                    user=user,
-                    db=db,
-                    provider_name=job.provider,
-                    char_count=total_chars,
-                )
-                if not credit_ok:
-                    log.warning(
-                        "insufficient_credits_for_document",
-                        job_id=str(job.id),
-                        user_id=str(user.id),
-                    )
-                    # Still save result since translation was already done
 
             # Reassemble translated content
             translated_content = "\n\n".join(translated_chunks)

@@ -8,6 +8,7 @@ import asyncio
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -287,15 +288,16 @@ async def get_job_status(
     return response
 
 
-@router.get("/jobs/{job_id}/download", response_model=DocumentDownloadResponse)
+@router.get("/jobs/{job_id}/download")
 async def download_translated_document(
     job_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> DocumentDownloadResponse:
-    """Download the translated document content.
+) -> PlainTextResponse:
+    """Download the translated document content as a text file.
 
-    Only available for completed jobs.
+    Only available for completed jobs. Returns the translated text
+    with Content-Disposition header for file download.
     """
     result = await db.execute(
         select(DocumentJob).where(
@@ -321,10 +323,13 @@ async def download_translated_document(
             detail="Translation result not found",
         )
 
-    return DocumentDownloadResponse(
-        job_id=str(job.id),
-        original_filename=job.original_filename,
-        translated_content=job.result.translated_content,
-        chunk_count=job.result.chunk_count,
-        total_characters=job.result.total_characters,
+    # Generate a filename based on original
+    original_name = job.original_filename.rsplit(".", 1)[0] if "." in job.original_filename else job.original_filename
+    download_filename = f"{original_name}-translated.txt"
+
+    return PlainTextResponse(
+        content=job.result.translated_content,
+        headers={
+            "Content-Disposition": f'attachment; filename="{download_filename}"',
+        },
     )

@@ -18,6 +18,7 @@ from src.api.models.admin_provider_key import AdminProviderKey
 from src.api.models.admin_settings import AdminSetting, DEFAULT_SETTINGS
 from src.api.models.usage_log import UsageLog
 from src.api.models.user import User
+from src.api.services.encryption import encrypt_api_key
 
 log = structlog.get_logger()
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -115,37 +116,47 @@ async def list_users(
     offset: int = Query(0, ge=0),
 ) -> UsersListResponse:
     """List all users with usage statistics."""
-    # Get users
-    result = await db.execute(
-        select(User).order_by(User.created_at.desc()).limit(limit).offset(offset)
-    )
-    users = result.scalars().all()
-
     # Get total user count
     count_result = await db.execute(select(func.count()).select_from(User))
     total = count_result.scalar_one()
 
-    # Get usage stats per user
-    user_summaries = []
-    for user in users:
-        stats_result = await db.execute(
-            select(
-                func.count(UsageLog.id).label("usage_count"),
-                func.coalesce(func.sum(UsageLog.character_count), 0).label("total_chars"),
-            ).where(UsageLog.user_id == user.id)
+    # Build a subquery for usage stats to avoid N+1 queries
+    usage_subq = (
+        select(
+            UsageLog.user_id,
+            func.count(UsageLog.id).label("usage_count"),
+            func.coalesce(func.sum(UsageLog.character_count), 0).label("total_chars"),
         )
-        stats = stats_result.one()
-        user_summaries.append(
-            UserSummary(
-                id=str(user.id),
-                email=user.email,
-                is_admin=user.is_admin,
-                credits_balance=user.credits_balance,
-                created_at=user.created_at.isoformat(),
-                usage_count=stats.usage_count,
-                total_chars_translated=int(stats.total_chars),
-            )
+        .group_by(UsageLog.user_id)
+        .subquery()
+    )
+
+    # Join users with usage stats in a single query
+    result = await db.execute(
+        select(
+            User,
+            func.coalesce(usage_subq.c.usage_count, 0).label("usage_count"),
+            func.coalesce(usage_subq.c.total_chars, 0).label("total_chars"),
         )
+        .outerjoin(usage_subq, User.id == usage_subq.c.user_id)
+        .order_by(User.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = result.all()
+
+    user_summaries = [
+        UserSummary(
+            id=str(row.User.id),
+            email=row.User.email,
+            is_admin=row.User.is_admin,
+            credits_balance=row.User.credits_balance,
+            created_at=row.User.created_at.isoformat(),
+            usage_count=int(row.usage_count),
+            total_chars_translated=int(row.total_chars),
+        )
+        for row in rows
+    ]
 
     return UsersListResponse(users=user_summaries, total=total)
 
@@ -384,7 +395,7 @@ async def create_admin_provider_key(
 
     admin_key = AdminProviderKey(
         provider=req.provider,
-        encrypted_api_key=req.api_key,  # TODO: encrypt with Fernet/KMS
+        encrypted_api_key=encrypt_api_key(req.api_key),
         is_active=True,
     )
     db.add(admin_key)
@@ -448,12 +459,35 @@ async def update_settings(
     db: AsyncSession = Depends(get_db),
 ) -> SettingsResponse:
     """Update admin settings (credit pricing, limits, etc.)."""
+    # Settings that must have valid numeric values
+    numeric_settings = {
+        "credit_cost_per_1k_chars",
+        "max_document_size_mb",
+        "max_translation_chars",
+        "free_tier_daily_chars",
+    }
+
     for key, value in req.settings.items():
         if key not in DEFAULT_SETTINGS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unknown setting: {key}. Valid: {', '.join(DEFAULT_SETTINGS.keys())}",
             )
+
+        # Validate numeric settings
+        if key in numeric_settings:
+            try:
+                numeric_val = float(value)
+                if numeric_val < 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Setting '{key}' must be a non-negative number, got: {value}",
+                    )
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Setting '{key}' must be a valid number, got: {value}",
+                )
 
         # Upsert the setting
         result = await db.execute(

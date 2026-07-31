@@ -12,6 +12,7 @@ from src.api.models.admin_provider_key import AdminProviderKey
 from src.api.models.credit_transaction import CreditTransaction
 from src.api.models.provider_key import ProviderKey
 from src.api.models.user import User
+from src.api.services.encryption import decrypt_api_key
 from src.api.services.providers.base import ProviderError, TranslationProvider
 from src.api.services.providers.google_provider import GoogleProvider
 from src.api.services.providers.huggingface_provider import HuggingFaceProvider
@@ -123,7 +124,8 @@ class ProviderManager:
                 provider_name, "Provider key not found or does not match provider"
             )
 
-        return self._create_provider(provider_name, key_record.encrypted_api_key)
+        api_key = decrypt_api_key(key_record.encrypted_api_key)
+        return self._create_provider(provider_name, api_key)
 
     async def _resolve_admin_key(
         self, provider_name: str, db: AsyncSession
@@ -144,7 +146,8 @@ class ProviderManager:
                 f"Please add your own API key via /api/v1/providers/keys.",
             )
 
-        return self._create_provider(provider_name, admin_key.encrypted_api_key)
+        api_key = decrypt_api_key(admin_key.encrypted_api_key)
+        return self._create_provider(provider_name, api_key)
 
     async def deduct_credits(
         self,
@@ -155,8 +158,13 @@ class ProviderManager:
     ) -> bool:
         """Deduct credits from user for using admin key.
 
+        Uses an atomic database UPDATE with a WHERE clause to prevent
+        race conditions where concurrent requests could overdraw the balance.
+
         Returns True if credits were deducted, False if insufficient.
         """
+        from sqlalchemy import update
+
         # MarianMT is free
         if provider_name == "marianmt":
             return True
@@ -164,10 +172,18 @@ class ProviderManager:
         cost_per_1k = self.settings.credit_cost_per_1k_chars
         cost = (char_count / 1000) * cost_per_1k
 
-        if user.credits_balance < cost:
+        # Atomic update: only deduct if balance is sufficient
+        result = await db.execute(
+            update(User)
+            .where(User.id == user.id, User.credits_balance >= cost)
+            .values(credits_balance=User.credits_balance - cost)
+        )
+
+        if result.rowcount == 0:
             return False
 
-        user.credits_balance -= cost
+        # Refresh user object to reflect new balance
+        await db.refresh(user)
 
         transaction = CreditTransaction(
             user_id=user.id,

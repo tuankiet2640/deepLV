@@ -30,6 +30,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await conn.run_sync(Base.metadata.create_all)
     log.info("database_tables_ready")
 
+    # Sweep orphaned document jobs stuck in "processing" state
+    from src.api.database import async_session as session_factory
+    from src.api.models.document_job import DocumentJob
+    from sqlalchemy import update
+    from datetime import datetime, timezone
+
+    async with session_factory() as session:
+        result = await session.execute(
+            update(DocumentJob)
+            .where(DocumentJob.status.in_(["processing", "pending"]))
+            .values(
+                status="failed",
+                error_message="Job interrupted by server restart",
+                completed_at=datetime.now(timezone.utc),
+            )
+        )
+        if result.rowcount > 0:
+            await session.commit()
+            log.warning("orphaned_jobs_recovered", count=result.rowcount)
+        else:
+            await session.commit()
+
     # Initialize Redis
     redis_client = redis.from_url(settings.redis_url, decode_responses=True)
     app.state.redis = redis_client

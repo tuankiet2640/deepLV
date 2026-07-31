@@ -14,6 +14,7 @@ from src.api.database import get_db
 from src.api.middleware.dependencies import get_current_user
 from src.api.models.provider_key import ProviderKey
 from src.api.models.user import User
+from src.api.services.encryption import encrypt_api_key
 from src.api.services.provider_manager import PROVIDER_INFO, SUPPORTED_PROVIDERS
 
 log = structlog.get_logger()
@@ -77,11 +78,11 @@ async def store_provider_key(
             detail="MarianMT is a built-in provider and does not require an API key",
         )
 
-    # Store key (in production, this should be encrypted at rest)
+    # Store key with encryption at rest
     provider_key = ProviderKey(
         user_id=user.id,
         provider=req.provider,
-        encrypted_api_key=req.api_key,  # TODO: encrypt with Fernet/KMS
+        encrypted_api_key=encrypt_api_key(req.api_key),
         label=req.label,
     )
     db.add(provider_key)

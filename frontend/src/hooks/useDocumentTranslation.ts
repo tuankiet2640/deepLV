@@ -49,6 +49,10 @@ export function useDocumentTranslation(): UseDocumentTranslationResult {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const jobsRef = useRef<DocumentJob[]>(jobs);
+
+  // Keep the ref in sync with state
+  jobsRef.current = jobs;
 
   const refreshJobs = useCallback(async () => {
     try {
@@ -124,12 +128,14 @@ export function useDocumentTranslation(): UseDocumentTranslationResult {
     }
   }, []);
 
-  // Poll for active jobs
+  // Poll for active jobs using a stable interval
   useEffect(() => {
     refreshJobs();
 
     pollIntervalRef.current = setInterval(() => {
-      const hasActive = jobs.some((j) => j.status === "pending" || j.status === "processing");
+      const hasActive = jobsRef.current.some(
+        (j) => j.status === "pending" || j.status === "processing",
+      );
       if (hasActive) {
         refreshJobs();
       }
@@ -140,7 +146,7 @@ export function useDocumentTranslation(): UseDocumentTranslationResult {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [refreshJobs, jobs]);
+  }, [refreshJobs]);
 
   return { jobs, isUploading, uploadError, uploadDocument, refreshJobs, downloadResult };
 }
