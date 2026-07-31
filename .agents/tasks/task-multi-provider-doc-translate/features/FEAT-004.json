@@ -2,7 +2,7 @@
   "id": "FEAT-004",
   "type": "feat",
   "description": "Full Observability Stack - Add Prometheus + Grafana to docker-compose for metrics visualization, structured JSON logging with correlation IDs, and pre-built Grafana dashboards. Extend existing Prometheus metrics with provider-specific counters and document translation metrics.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create monitoring/prometheus/prometheus.yml - Prometheus config that scrapes the API at :8000/metrics every 15s. Include job labels and scrape targets for api and worker services.",
     "Create monitoring/grafana/provisioning/datasources/prometheus.yml - auto-provision Prometheus as data source in Grafana.",
@@ -29,5 +29,5 @@
     "Run python -c 'import yaml; yaml.safe_load(open(\"monitoring/prometheus/prometheus.yml\")); print(\"Valid YAML\")' to check prometheus config"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Tests have pre-existing failures due to Python 3.9 runtime vs 3.11 requirement (type union syntax in cache.py) and missing ftlangdetect module. These are not related to FEAT-004 changes. Docker compose plugin not available in sandbox so config validation was done with PyYAML instead. All new metrics verified importable and functional. Structured JSON logging verified with correlation fields (request_id, user_id, timestamp, level). Worker /metrics endpoint added with model load time and inference latency histograms."
 }
