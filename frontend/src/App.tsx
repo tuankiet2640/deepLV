@@ -1,8 +1,10 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { ToastProvider } from "./contexts/ToastContext";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
+import { ToastContainer } from "./components/Toast";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -19,12 +21,15 @@ import { ApiReferencePage } from "./pages/ApiReferencePage";
 import { StatusPage } from "./pages/StatusPage";
 import { ArchitecturePage } from "./pages/ArchitecturePage";
 import { AdminPage } from "./pages/AdminPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <ThemeProvider>
+        <ToastProvider>
         <div className="min-h-screen flex flex-col bg-dlv-surface dark:bg-dlv-dark-bg transition-colors">
           <Header />
           <main className="flex-1">
@@ -52,6 +57,14 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <ProfilePage />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/getting-started" element={<GettingStartedPage />} />
               <Route path="/api-reference" element={<ApiReferencePage />} />
               <Route path="/architecture" element={<ArchitecturePage />} />
@@ -72,10 +85,13 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </main>
           <Footer />
+          <ToastContainer />
         </div>
+        </ToastProvider>
         </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
