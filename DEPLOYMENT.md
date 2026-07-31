@@ -159,6 +159,45 @@ ADMIN_GOOGLE_KEY=AIza...
 
 Or via the Admin Dashboard UI (Settings → Provider Keys).
 
+## Making Your First Admin User
+
+After registering your first user (via the web UI at `/register` or via the API), promote them to admin directly in the Supabase database:
+
+1. Go to [Supabase Dashboard](https://supabase.com) and open your project
+2. Navigate to **Table Editor** or **SQL Editor**
+3. Run:
+
+```sql
+UPDATE users SET is_admin = true WHERE email = 'your-email@example.com';
+```
+
+Once promoted, you can:
+- Access the **Admin Dashboard** at `/admin` in the frontend
+- Manage users, view analytics, configure provider keys, and adjust credit pricing
+- Promote additional admins via the Admin UI (PATCH `/api/v1/admin/users/{id}`)
+
+## Frontend Auth Pages
+
+The frontend includes a complete authentication flow:
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/register` | Registration | Create account with email and password |
+| `/login` | Login | Authenticate and receive JWT session |
+| `/api-keys` | API Key Management | Create/delete `dlv_live_...` keys for programmatic API access |
+| `/settings` | User Settings | Manage BYOK provider keys and view credit balance |
+| `/admin` | Admin Dashboard | Users, analytics, provider keys, system settings (admin only) |
+
+Protected routes redirect unauthenticated users to `/login`. The admin page requires `is_admin=true` on the user record.
+
+### Auth Flow
+
+1. User registers at `/register` (calls POST `/api/v1/auth/register`)
+2. User logs in at `/login` (calls POST `/api/v1/auth/login`, stores JWT in context)
+3. Authenticated user can create API keys at `/api-keys` for programmatic use
+4. API keys use the `X-API-Key` header; JWT uses `Authorization: Bearer <token>` header
+5. Admin users see the "Admin" link in the navigation header
+
 ## Monitoring
 
 - **Grafana**: `https://yourdomain.com/grafana/` (login with GRAFANA_ADMIN_USER/PASSWORD)
