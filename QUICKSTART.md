@@ -4,6 +4,16 @@ Get DeepLV running in 5 minutes.
 
 ---
 
+## Choose Your Deployment Mode
+
+| Mode | Use when | Command |
+|------|----------|---------|
+| **Cloudflare Tunnel** | You want HTTPS without opening ports | `docker compose -f docker-compose.prod.yml up -d` |
+| **Port Forwarding** | You want direct access / have your own domain + SSL | `docker compose -f docker-compose.local.yml up -d` |
+| **Dev (local only)** | Testing on your machine | `docker compose up -d` |
+
+---
+
 ## 1. Clone
 
 ```bash
@@ -137,3 +147,97 @@ Then restart: `docker compose -f docker-compose.prod.yml restart api`
 | High memory | Lower `MODEL_CACHE_SIZE=2` in `.env`, restart |
 | Tunnel not connecting | Check token: `docker compose -f docker-compose.prod.yml logs cloudflared` |
 | Supabase project paused | Free tier pauses after 7 days idle — unpause in dashboard |
+
+---
+
+## Option B: Port Forwarding (No Cloudflare)
+
+If you prefer to expose ports directly from your router instead of using Cloudflare Tunnel:
+
+### 1. Configure
+
+```bash
+cp .env.production .env
+```
+
+Edit `.env` — same as above but change:
+```bash
+# Use your public IP or domain
+DOMAIN=your-public-ip-or-domain.com
+CORS_ORIGINS=http://your-public-ip-or-domain.com:3000
+VITE_API_URL=http://your-public-ip-or-domain.com:3000
+
+# Remove or leave blank (not needed)
+CLOUDFLARE_TUNNEL_TOKEN=
+```
+
+### 2. Deploy with port-forwarding compose file
+
+```bash
+docker compose -f docker-compose.local.yml up --build -d
+```
+
+### 3. Configure your router
+
+Forward these ports to your machine's LAN IP:
+
+| External Port | Internal Port | Service |
+|--------------|---------------|---------|
+| 80 or 3000 | 3000 | Frontend + API |
+| 9090 (optional) | 9090 | Prometheus |
+| 3001 (optional) | 3001 | Grafana |
+
+### 4. (Optional) Add SSL with Let's Encrypt
+
+If you have a domain pointed at your public IP:
+
+```bash
+# Install certbot on your host
+sudo apt install certbot
+
+# Get certificate
+sudo certbot certonly --standalone -d translate.yourdomain.com
+
+# Mount certs into nginx (add to docker-compose.local.yml frontend volumes):
+#   - /etc/letsencrypt/live/yourdomain.com:/etc/nginx/ssl:ro
+```
+
+Then update `frontend/nginx.prod.conf` to listen on 443 with the cert.
+
+### 5. Access
+
+| URL | What |
+|-----|------|
+| `http://YOUR_IP:3000` | Translation UI |
+| `http://YOUR_IP:3000/docs` | API docs |
+| `http://YOUR_IP:3001` | Grafana |
+| `http://YOUR_IP:9090` | Prometheus |
+
+### Port-forwarding commands
+
+```bash
+# Start
+docker compose -f docker-compose.local.yml up -d
+
+# Logs
+docker compose -f docker-compose.local.yml logs -f
+
+# Stop
+docker compose -f docker-compose.local.yml down
+
+# Restart
+docker compose -f docker-compose.local.yml restart
+
+# Change port (default 3000)
+PORT=8080 docker compose -f docker-compose.local.yml up -d
+```
+
+### Find your IPs
+
+```bash
+# LAN IP
+hostname -I | awk '{print $1}'
+
+# Public IP
+curl -s ifconfig.me
+```
