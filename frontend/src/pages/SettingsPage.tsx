@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
 
 const API_BASE = "/api/v1";
 
@@ -24,16 +25,19 @@ interface Transaction {
   created_at: string;
 }
 
-function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem("dlv_token");
-  const apiKey = localStorage.getItem("dlv_api_key");
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  if (apiKey) headers["X-API-Key"] = apiKey;
-  return headers;
+function useAuthHeaders(): () => Record<string, string> {
+  const { token } = useAuth();
+  return () => {
+    const apiKey = localStorage.getItem("dlv_api_key");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (apiKey) headers["X-API-Key"] = apiKey;
+    return headers;
+  };
 }
 
 function ProviderKeysTab() {
+  const getAuthHeaders = useAuthHeaders();
   const [keys, setKeys] = useState<ProviderKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -54,7 +58,7 @@ function ProviderKeysTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   useEffect(() => {
     fetchKeys();
@@ -196,6 +200,7 @@ function ProviderKeysTab() {
 }
 
 function CreditsTab() {
+  const getAuthHeaders = useAuthHeaders();
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,7 +224,7 @@ function CreditsTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   useEffect(() => {
     fetchData();
