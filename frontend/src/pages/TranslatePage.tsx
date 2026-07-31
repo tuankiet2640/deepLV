@@ -2,6 +2,7 @@ import { useState } from "react";
 import { TranslationPanel } from "../components/TranslationPanel";
 import { ProviderSelector } from "../components/ProviderSelector";
 import { useTranslation } from "../hooks/useTranslation";
+import { CostEstimate } from "../components/CostEstimate";
 
 const LANGUAGES = [
   { code: "auto", name: "Detect language" },
@@ -124,6 +125,11 @@ export function TranslatePage() {
               ) : null
             }
           />
+        </div>
+
+        {/* Cost estimate */}
+        <div className="px-4 pb-3">
+          <CostEstimate provider={provider} charCount={sourceText.length} />
         </div>
 
         {/* Error bar */}
