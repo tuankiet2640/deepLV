@@ -2,6 +2,7 @@ import { useState } from "react";
 import { TranslationPanel } from "../components/TranslationPanel";
 import { ProviderSelector } from "../components/ProviderSelector";
 import { useTranslation } from "../hooks/useTranslation";
+import { CostEstimate } from "../components/CostEstimate";
 
 const LANGUAGES = [
   { code: "auto", name: "Detect language" },
@@ -43,23 +44,23 @@ export function TranslatePage() {
   return (
     <div className="max-w-6xl mx-auto w-full px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Translate</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Translate</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Type or paste text to translate. Results appear as you type with 300ms debounce.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-dlv-border overflow-hidden">
+      <div className="bg-white dark:bg-dlv-dark-card rounded-xl shadow-sm border border-dlv-border dark:border-dlv-dark-border overflow-hidden">
         {/* Language selector bar */}
-        <div className="flex items-center border-b border-dlv-border px-4 py-3 bg-gray-50">
+        <div className="flex items-center border-b border-dlv-border dark:border-dlv-dark-border px-4 py-3 bg-gray-50 dark:bg-dlv-dark-bg">
           <div className="flex-1">
             <select
               value={sourceLang}
               onChange={(e) => setSourceLang(e.target.value)}
-              className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer"
+              className="bg-transparent text-sm font-medium text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer"
             >
               {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
+                <option key={l.code} value={l.code} className="dark:bg-dlv-dark-card dark:text-gray-200">
                   {l.name}
                 </option>
               ))}
@@ -73,10 +74,10 @@ export function TranslatePage() {
           <button
             onClick={handleSwap}
             disabled={sourceLang === "auto"}
-            className="mx-4 p-2 rounded-full hover:bg-gray-200 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="mx-4 p-2 rounded-full hover:bg-gray-200 dark:hover:bg-white/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="Swap languages"
           >
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
             </svg>
           </button>
@@ -84,10 +85,10 @@ export function TranslatePage() {
             <select
               value={targetLang}
               onChange={(e) => setTargetLang(e.target.value)}
-              className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer"
+              className="bg-transparent text-sm font-medium text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer"
             >
               {TARGET_LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
+                <option key={l.code} value={l.code} className="dark:bg-dlv-dark-card dark:text-gray-200">
                   {l.name}
                 </option>
               ))}
@@ -96,13 +97,13 @@ export function TranslatePage() {
         </div>
 
         {/* Provider selector */}
-        <div className="flex items-center border-b border-dlv-border px-4 py-2 bg-gray-50/50">
-          <span className="text-xs text-gray-500 mr-2">Provider:</span>
+        <div className="flex items-center border-b border-dlv-border dark:border-dlv-dark-border px-4 py-2 bg-gray-50/50 dark:bg-dlv-dark-bg/50">
+          <span className="text-xs text-gray-500 dark:text-gray-400 mr-2">Provider:</span>
           <ProviderSelector value={provider} onChange={setProvider} compact />
         </div>
 
         {/* Translation panels */}
-        <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-dlv-border min-h-[350px]">
+        <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-dlv-border dark:divide-dlv-dark-border min-h-[350px]">
           <TranslationPanel
             value={sourceText}
             onChange={setSourceText}
@@ -126,9 +127,14 @@ export function TranslatePage() {
           />
         </div>
 
+        {/* Cost estimate */}
+        <div className="px-4 pb-3">
+          <CostEstimate provider={provider} charCount={sourceText.length} />
+        </div>
+
         {/* Error bar */}
         {error && (
-          <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-sm text-red-700">
+          <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300">
             {error}
           </div>
         )}

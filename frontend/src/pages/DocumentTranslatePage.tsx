@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileUpload } from "../components/FileUpload";
 import { ProviderSelector } from "../components/ProviderSelector";
+import { DocumentCostEstimate } from "../components/DocumentCostEstimate";
 import { JobStatusCard } from "../components/JobStatusCard";
 import { useDocumentTranslation } from "../hooks/useDocumentTranslation";
 
@@ -43,14 +44,14 @@ export function DocumentTranslatePage() {
   return (
     <div className="max-w-4xl mx-auto w-full px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Document Translation</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Document Translation</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Upload a document and translate it using AI. Choose your provider or use platform credits.
         </p>
       </div>
 
       {/* Upload Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-dlv-border p-6 space-y-6">
+      <div className="bg-white dark:bg-dlv-dark-card rounded-xl shadow-sm border border-dlv-border dark:border-dlv-dark-border p-6 space-y-6">
         <FileUpload
           onFileSelect={setSelectedFile}
           selectedFile={selectedFile}
@@ -60,11 +61,11 @@ export function DocumentTranslatePage() {
         {/* Language selectors */}
         <div className="flex items-center gap-4">
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">From</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
             <select
               value={sourceLang}
               onChange={(e) => setSourceLang(e.target.value)}
-              className="w-full border border-dlv-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dlv-accent"
+              className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-lg px-3 py-2 text-sm bg-white dark:bg-dlv-dark-bg dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-dlv-accent"
             >
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>
@@ -79,11 +80,11 @@ export function DocumentTranslatePage() {
             </svg>
           </div>
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">To</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
             <select
               value={targetLang}
               onChange={(e) => setTargetLang(e.target.value)}
-              className="w-full border border-dlv-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-dlv-accent"
+              className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-lg px-3 py-2 text-sm bg-white dark:bg-dlv-dark-bg dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-dlv-accent"
             >
               {TARGET_LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>
@@ -96,6 +97,11 @@ export function DocumentTranslatePage() {
 
         {/* Provider selection */}
         <ProviderSelector value={provider} onChange={setProvider} />
+
+        {/* Cost estimate */}
+        {selectedFile && (
+          <DocumentCostEstimate file={selectedFile} provider={provider} />
+        )}
 
         {/* Submit button */}
         <button
@@ -119,14 +125,14 @@ export function DocumentTranslatePage() {
         </button>
 
         {uploadError && (
-          <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">{uploadError}</p>
+          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg">{uploadError}</p>
         )}
       </div>
 
       {/* Job History */}
       {jobs.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Translation Jobs</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Translation Jobs</h2>
           <div className="space-y-3">
             {jobs.map((job) => (
               <JobStatusCard key={job.id} job={job} onDownload={downloadResult} />

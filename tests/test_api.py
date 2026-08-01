@@ -4,7 +4,7 @@ These test the HTTP layer with a real (in-process) FastAPI app.
 Redis and model worker are mocked to keep tests fast and CI-friendly.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -43,25 +43,23 @@ class _MockPipeline:
 
 @pytest.fixture
 async def client(mock_redis):
-    with patch("src.api.main.redis") as redis_mod:
-        redis_mod.from_url = lambda *args, **kwargs: mock_redis
-        # Initialize app.state that would normally be set by lifespan
-        import time
+    # Initialize app.state that would normally be set by lifespan
+    import time
 
-        from src.api.main import app
-        from src.api.middleware.rate_limit import RateLimiter
-        from src.api.services.cache import TranslationCache
-        from src.shared.config import APISettings
+    from src.api.main import app
+    from src.api.middleware.rate_limit import RateLimiter
+    from src.api.services.cache import TranslationCache
+    from src.shared.config import APISettings
 
-        app.state.redis = mock_redis
-        app.state.translation_cache = TranslationCache(mock_redis)
-        app.state.rate_limiter = RateLimiter(mock_redis)
-        app.state.settings = APISettings()
-        app.state.start_time = time.monotonic()
+    app.state.redis = mock_redis
+    app.state.translation_cache = TranslationCache(mock_redis)
+    app.state.rate_limiter = RateLimiter(mock_redis)
+    app.state.settings = APISettings()
+    app.state.start_time = time.monotonic()
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
 
 
 @pytest.mark.asyncio

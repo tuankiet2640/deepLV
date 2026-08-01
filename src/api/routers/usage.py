@@ -32,6 +32,22 @@ class UsageResponse(BaseModel):
     daily: list[DailyStats]
 
 
+class HistoryItem(BaseModel):
+    id: str
+    source_lang: str
+    target_lang: str
+    character_count: int
+    cached: bool
+    latency_ms: int
+    provider: str | None
+    created_at: str
+
+
+class HistoryResponse(BaseModel):
+    items: list[HistoryItem]
+    total: int
+
+
 @router.get("", response_model=UsageResponse)
 async def get_usage(
     user: User = Depends(get_current_user),
@@ -101,3 +117,56 @@ async def get_usage(
         by_language_pair=by_pair,
         daily=daily,
     )
+
+
+@router.get("/history", response_model=HistoryResponse)
+async def get_history(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    source_lang: str | None = Query(None),
+    target_lang: str | None = Query(None),
+    provider: str | None = Query(None),
+    days: int = Query(30, ge=1, le=90),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> HistoryResponse:
+    """Get individual translation history entries with optional filtering."""
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    filters = [UsageLog.user_id == user.id, UsageLog.created_at >= cutoff]
+
+    if source_lang:
+        filters.append(UsageLog.source_lang == source_lang)
+    if target_lang:
+        filters.append(UsageLog.target_lang == target_lang)
+    if provider:
+        filters.append(UsageLog.provider == provider)
+
+    # Total count
+    count_q = select(func.count()).select_from(UsageLog).where(*filters)
+    count_result = await db.execute(count_q)
+    total = count_result.scalar_one()
+
+    # Fetch items
+    items_q = (
+        select(UsageLog)
+        .where(*filters)
+        .order_by(UsageLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    items_result = await db.execute(items_q)
+    items = [
+        HistoryItem(
+            id=str(row.id),
+            source_lang=row.source_lang,
+            target_lang=row.target_lang,
+            character_count=row.character_count,
+            cached=row.cached,
+            latency_ms=row.latency_ms,
+            provider=row.provider,
+            created_at=row.created_at.isoformat(),
+        )
+        for row in items_result.scalars().all()
+    ]
+
+    return HistoryResponse(items=items, total=total)

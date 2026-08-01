@@ -77,7 +77,74 @@ Done. Your app is live at `https://translate.yourdomain.com`
 
 ---
 
-## 6. (Optional) Download Local Translation Models
+## 6. User Flow (Register, Login, Translate)
+
+Once deployed, here is the typical user flow:
+
+### Via the Frontend (Web UI)
+
+1. **Register** - Visit `/register` and create an account with email and password
+2. **Login** - Visit `/login` to authenticate and receive a session
+3. **Create API Key** - Go to `/api-keys` to generate a `dlv_live_...` key for programmatic access
+4. **Translate** - Use `/translate` for real-time text translation with provider selection
+5. **Documents** - Use `/documents` to upload PDF/DOCX/TXT files for background translation
+6. **Settings** - Visit `/settings` to manage BYOK provider keys and view credit balance
+7. **Admin** - If you are an admin user, `/admin` gives access to user management, analytics, and system settings
+
+### Frontend Pages
+
+| Route | Page | Auth Required |
+|-------|------|---------------|
+| `/` | Landing page (product marketing, pricing, features) | No |
+| `/login` | Login with email/password | No |
+| `/register` | Create a new account | No |
+| `/translate` | Real-time translation with provider selector | No |
+| `/documents` | Document upload, job tracking, download | No |
+| `/settings` | BYOK key management, credits, provider keys | Yes (JWT) |
+| `/api-keys` | Create and manage API keys | Yes (JWT) |
+| `/admin` | Admin dashboard (users, analytics, keys, settings) | Yes (admin) |
+| `/getting-started` | Getting started documentation | No |
+| `/api-reference` | API reference documentation | No |
+| `/architecture` | Architecture overview | No |
+| `/status` | System status page | No |
+
+### Via the API (programmatic)
+
+```bash
+# 1. Register
+curl -X POST https://DOMAIN/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "securepassword123"}'
+
+# 2. Login
+curl -X POST https://DOMAIN/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "securepassword123"}'
+# Returns: { "access_token": "eyJ..." }
+
+# 3. Create API key
+curl -X POST https://DOMAIN/api/v1/keys \
+  -H "Authorization: Bearer eyJ..." \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-key"}'
+# Returns: { "key": "dlv_live_..." }
+
+# 4. Translate (with API key)
+curl -X POST https://DOMAIN/api/v1/translate \
+  -H "X-API-Key: dlv_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "source_lang": "en", "target_lang": "de"}'
+
+# 5. Translate with a specific provider
+curl -X POST https://DOMAIN/api/v1/translate \
+  -H "X-API-Key: dlv_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "source_lang": "en", "target_lang": "fr", "provider": "openai"}'
+```
+
+---
+
+## 7. (Optional) Download Local Translation Models
 
 For free built-in MarianMT translation (no API key needed):
 

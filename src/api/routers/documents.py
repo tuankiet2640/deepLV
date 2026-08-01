@@ -210,9 +210,9 @@ def _task_done_callback(task: asyncio.Task) -> None:
 
 async def _run_translation_background(
     translator: DocumentTranslator,
-    job_id,
+    job_id: object,
     text_content: str,
-    user_id,
+    user_id: object,
     provider_key_id: str | None,
 ) -> None:
     """Run document translation in a background task with its own DB session."""
