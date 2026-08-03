@@ -27,34 +27,6 @@ MODEL_PAIRS = [
 ]
 
 
-def _write_decoder_yml(tmp_dir: Path, model) -> None:
-    """Generate decoder.yml required by OpusMTConverter.
-
-    Helsinki-NLP OPUS-MT models need this file for CTranslate2 conversion.
-    The file describes the Marian NMT architecture parameters.
-    """
-    vocab_size = model.config.vocab_size
-    dec_depth = model.config.decoder_layers
-    enc_depth = model.config.encoder_layers
-    dim_emb = model.config.d_model
-
-    content = (
-        f"- dec-depth: {dec_depth}\n"
-        f"  dec-cell: ssru\n"
-        f"  enc-depth: {enc_depth}\n"
-        f"  enc-cell: gru\n"
-        f"  tied-embeddings-all: true\n"
-        f"  dim-emb: {dim_emb}\n"
-        f"  dim-vocabs:\n"
-        f"    - {vocab_size}\n"
-        f"    - {vocab_size}\n"
-    )
-
-    decoder_yml_path = tmp_dir / "decoder.yml"
-    with open(decoder_yml_path, "w") as f:
-        f.write(content)
-
-
 def download_and_convert(
     src: str, tgt: str, model_id: str, output_dir: Path, quantization: str = "int8"
 ) -> None:
