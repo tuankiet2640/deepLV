@@ -383,8 +383,7 @@ async def delete_jobs(
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status: {job_status}. "
-            f"Valid values: {', '.join(VALID_JOB_STATUSES)}",
+            detail=f"Invalid status: {job_status}. Valid values: {', '.join(VALID_JOB_STATUSES)}",
         )
 
     id_result = await db.execute(
