@@ -1,4 +1,5 @@
 [build]
+dockerfilePath = "Dockerfile.railway"
 
 [deploy]
 healthcheckPath = "/health"
