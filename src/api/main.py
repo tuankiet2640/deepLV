@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -37,37 +38,53 @@ settings = APISettings()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging(settings.log_level)
 
-    # Create database tables on startup
+    # Create database tables on startup (with retry for cold starts / paused DBs)
     from src.api.database import engine
     from src.api.models import Base
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    log.info("database_tables_ready")
+    db_ready = False
+    for attempt in range(5):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            log.info("database_tables_ready")
+            db_ready = True
+            break
+        except Exception as e:
+            wait = 2 ** (attempt + 1)
+            log.warning("database_connect_retry", attempt=attempt + 1, wait=wait, error=str(e))
+            await asyncio.sleep(wait)
+
+    if not db_ready:
+        log.error("database_unavailable", msg="Could not connect after 5 attempts. App will start but DB features will fail.")
 
     # Sweep orphaned document jobs stuck in "processing" state
-    from datetime import datetime
+    if db_ready:
+        try:
+            from datetime import datetime
 
-    from sqlalchemy import update
+            from sqlalchemy import update
 
-    from src.api.database import async_session as session_factory
-    from src.api.models.document_job import DocumentJob
+            from src.api.database import async_session as session_factory
+            from src.api.models.document_job import DocumentJob
 
-    async with session_factory() as session:
-        result = await session.execute(
-            update(DocumentJob)
-            .where(DocumentJob.status.in_(["processing", "pending"]))
-            .values(
-                status="failed",
-                error_message="Job interrupted by server restart",
-                completed_at=datetime.now(UTC),
-            )
-        )
-        if result.rowcount > 0:
-            await session.commit()
-            log.warning("orphaned_jobs_recovered", count=result.rowcount)
-        else:
-            await session.commit()
+            async with session_factory() as session:
+                result = await session.execute(
+                    update(DocumentJob)
+                    .where(DocumentJob.status.in_(["processing", "pending"]))
+                    .values(
+                        status="failed",
+                        error_message="Job interrupted by server restart",
+                        completed_at=datetime.now(UTC),
+                    )
+                )
+                if result.rowcount > 0:
+                    await session.commit()
+                    log.warning("orphaned_jobs_recovered", count=result.rowcount)
+                else:
+                    await session.commit()
+        except Exception as e:
+            log.warning("orphaned_jobs_cleanup_failed", error=str(e))
 
     # Initialize Redis (optional — app works without it, just no caching/rate-limiting)
     try:
