@@ -3,8 +3,8 @@ from collections import OrderedDict
 from pathlib import Path
 
 import ctranslate2
-import sentencepiece as spm
 import structlog
+from transformers import MarianTokenizer
 
 log = structlog.get_logger()
 
@@ -12,7 +12,7 @@ log = structlog.get_logger()
 class TranslatorEntry:
     __slots__ = ("translator", "tokenizer", "last_used")
 
-    def __init__(self, translator: ctranslate2.Translator, tokenizer: spm.SentencePieceProcessor):
+    def __init__(self, translator: ctranslate2.Translator, tokenizer: MarianTokenizer):
         self.translator = translator
         self.tokenizer = tokenizer
         self.last_used = time.monotonic()
@@ -34,7 +34,7 @@ class ModelCache:
 
     def get_translator(
         self, source_lang: str, target_lang: str
-    ) -> tuple[ctranslate2.Translator, spm.SentencePieceProcessor]:
+    ) -> tuple[ctranslate2.Translator, MarianTokenizer]:
         key = self._model_key(source_lang, target_lang)
 
         if key in self._cache:
@@ -47,7 +47,7 @@ class ModelCache:
         log.info("model_cache_miss", model=key, loading=True)
         return self._load_model(key)
 
-    def _load_model(self, key: str) -> tuple[ctranslate2.Translator, spm.SentencePieceProcessor]:
+    def _load_model(self, key: str) -> tuple[ctranslate2.Translator, MarianTokenizer]:
         if len(self._cache) >= self._max_models:
             evicted_key, _ = self._cache.popitem(last=False)
             log.info("model_evicted", model=evicted_key)
@@ -63,9 +63,17 @@ class ModelCache:
             inter_threads=2,
         )
 
-        sp_model_path = model_path / "source.spm"
-        tokenizer = spm.SentencePieceProcessor()
-        tokenizer.Load(str(sp_model_path))
+        # Use the MarianTokenizer that shipped with the converted model rather
+        # than loading source.spm as a bare SentencePiece processor.
+        #
+        # A bare processor gets two things wrong: its piece IDs are not the
+        # vocabulary CTranslate2 was converted against, and source.spm cannot
+        # detokenize target-language output. Both produce garbage translations.
+        #
+        # MarianTokenizer is instantiated directly instead of via AutoTokenizer
+        # because this directory's config.json is CTranslate2 metadata, which
+        # AutoTokenizer cannot interpret as a model config.
+        tokenizer = MarianTokenizer.from_pretrained(str(model_path), local_files_only=True)
 
         entry = TranslatorEntry(translator, tokenizer)
         self._cache[key] = entry
