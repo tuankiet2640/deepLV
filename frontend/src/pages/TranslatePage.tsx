@@ -30,6 +30,7 @@ export function TranslatePage() {
     sourceText,
     sourceLang,
     targetLang,
+    provider,
   );
 
   const handleSwap = () => {

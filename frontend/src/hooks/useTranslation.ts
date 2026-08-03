@@ -16,6 +16,7 @@ export function useTranslation(
   text: string,
   sourceLang: string,
   targetLang: string,
+  provider: string = "marianmt",
 ): TranslationResult {
   const [translatedText, setTranslatedText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -61,6 +62,7 @@ export function useTranslation(
             text: trimmed,
             source_lang: sourceLang,
             target_lang: targetLang,
+            provider: provider,
           }),
           signal: controller.signal,
         });
@@ -86,7 +88,7 @@ export function useTranslation(
     return () => {
       clearTimeout(timer);
     };
-  }, [text, sourceLang, targetLang]);
+  }, [text, sourceLang, targetLang, provider]);
 
   return { translatedText, isLoading, error, latencyMs, cached, detectedLang };
 }
