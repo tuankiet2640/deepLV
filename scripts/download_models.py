@@ -31,7 +31,9 @@ MODEL_PAIRS = [
 def download_and_convert(
     src: str, tgt: str, model_id: str, output_dir: Path, quantization: str = "int8"
 ) -> None:
-    from transformers import MarianMTModel, MarianTokenizer
+    import tempfile
+
+    from transformers import MarianTokenizer
 
     key = f"{src}-{tgt}"
     out_path = output_dir / key
@@ -40,31 +42,25 @@ def download_and_convert(
         print(f"  [skip] {key} already exists at {out_path}")
         return
 
-    print(f"  [download] {model_id} ...")
-    tokenizer = MarianTokenizer.from_pretrained(model_id)
-    model = MarianMTModel.from_pretrained(model_id)
-
-    # Save PyTorch model temporarily
-    tmp_dir = output_dir / f".tmp_{key}"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(str(tmp_dir))
-    tokenizer.save_pretrained(str(tmp_dir))
-
-    # Convert to CTranslate2
-    print(f"  [convert] {key} -> CTranslate2 ({quantization}) ...")
-    converter = ctranslate2.converters.OpusMTConverter(str(tmp_dir))
+    # Convert directly from HuggingFace model ID using TransformersConverter.
+    # Passing the model ID string (not a local path) lets the converter
+    # download and handle the conversion correctly without null config issues.
+    print(f"  [convert] {model_id} -> CTranslate2 ({quantization}) ...")
+    converter = ctranslate2.converters.TransformersConverter(model_id)
     converter.convert(str(out_path), quantization=quantization)
 
-    # Copy SentencePiece model for tokenization
-    for spm_file in tmp_dir.glob("*.spm"):
-        shutil.copy2(spm_file, out_path / spm_file.name)
+    # Download tokenizer to a temp directory and copy .spm files to the
+    # output model directory. The runtime (model_cache.py) needs source.spm
+    # for SentencePiece tokenization.
+    print(f"  [tokenizer] downloading {model_id} tokenizer ...")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tokenizer = MarianTokenizer.from_pretrained(model_id)
+        tokenizer.save_pretrained(tmp_dir)
 
-    # Copy tokenizer config for reference
-    for json_file in tmp_dir.glob("*.json"):
-        shutil.copy2(json_file, out_path / json_file.name)
+        tmp_path = Path(tmp_dir)
+        for spm_file in tmp_path.glob("*.spm"):
+            shutil.copy2(spm_file, out_path / spm_file.name)
 
-    # Cleanup temp
-    shutil.rmtree(tmp_dir)
     print(f"  [done] {key}")
 
 
