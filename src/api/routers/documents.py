@@ -5,6 +5,7 @@ and downloading translated results.
 """
 
 import asyncio
+from urllib.parse import quote
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -348,10 +349,19 @@ async def download_translated_document(
     )
     download_filename = f"{original_name}-translated.txt"
 
+    # Content-Disposition headers must be latin-1 encodable, but filenames can
+    # contain arbitrary Unicode (e.g. Vietnamese diacritics). Provide an ASCII
+    # fallback plus the RFC 5987 filename* form so browsers use the real name.
+    ascii_filename = download_filename.encode("ascii", "ignore").decode("ascii") or "download.txt"
+    encoded_filename = quote(download_filename)
+
     return PlainTextResponse(
         content=job.result.translated_content,
         headers={
-            "Content-Disposition": f'attachment; filename="{download_filename}"',
+            "Content-Disposition": (
+                f'attachment; filename="{ascii_filename}"; '
+                f"filename*=UTF-8''{encoded_filename}"
+            ),
         },
     )
 
