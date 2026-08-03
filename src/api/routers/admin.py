@@ -293,7 +293,9 @@ async def get_usage_analytics(
             func.count(UsageLog.id).label("count"),
         ).group_by(func.coalesce(UsageLog.provider, "marianmt"))
     )
-    translations_by_provider = {row.provider: row.count for row in provider_result.all()}
+    translations_by_provider: dict[str, int] = {
+        row.provider: row.count for row in provider_result.all()
+    }
 
     # Translations by language pair (top 10)
     lang_pair_result = await db.execute(
