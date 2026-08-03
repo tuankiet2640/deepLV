@@ -5,9 +5,20 @@ and downloading translated results.
 """
 
 import asyncio
+import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import delete as sql_delete
@@ -16,13 +27,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import async_session, get_db
 from src.api.middleware.dependencies import get_current_user
+from src.api.models.document_artifact import DocumentArtifact
 from src.api.models.document_job import DocumentJob
 from src.api.models.document_result import DocumentResult
 from src.api.models.user import User
-from src.api.services.document_parser import (
+from src.api.services.document_format import (
     SUPPORTED_FORMATS,
-    DocumentParseError,
-    DocumentParser,
+    DocumentFormatError,
+    file_extension,
+    format_notes,
+    get_handler,
 )
 from src.api.services.document_translator import DocumentTranslator
 from src.api.services.provider_manager import SUPPORTED_PROVIDERS, ProviderManager
@@ -61,6 +75,11 @@ class DocumentJobDetailResponse(DocumentJobResponse):
     chunk_count: int | None = None
     total_characters: int | None = None
     translated_preview: str | None = None
+    segment_count: int | None = None
+    translated_segments: int | None = None
+    failed_segments: int | None = None
+    format_preserved: bool | None = None
+    output_filename: str | None = None
 
 
 class DocumentDownloadResponse(BaseModel):
@@ -69,6 +88,18 @@ class DocumentDownloadResponse(BaseModel):
     translated_content: str
     chunk_count: int
     total_characters: int
+
+
+class SupportedFormat(BaseModel):
+    extension: str
+    output_extension: str
+    format_preserved: bool
+    note: str | None = None
+
+
+class SupportedFormatsResponse(BaseModel):
+    formats: list[SupportedFormat]
+    max_file_size_bytes: int
 
 
 def _job_to_response(job: DocumentJob) -> DocumentJobResponse:
@@ -96,12 +127,15 @@ async def upload_and_translate(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentJobResponse:
-    """Upload a document for translation.
+    """Upload a document for translation, keeping its formatting.
 
-    Accepts PDF, DOCX, or TXT files up to 10MB.
-    Creates a background translation job and returns immediately.
+    Accepts DOCX, PPTX, XLSX, HTML, TXT and PDF up to 10MB. The translated text is
+    written back into the uploaded file, so styling, images and layout are carried
+    over. PDF is the exception: it comes back as DOCX, because a PDF has no
+    editable text model to write into.
 
-    The job status can be polled via GET /api/v1/documents/jobs/{job_id}.
+    Creates a background translation job and returns immediately. Poll
+    GET /api/v1/documents/jobs/{job_id} for status.
     """
     # Validate provider
     if provider not in SUPPORTED_PROVIDERS:
@@ -117,7 +151,7 @@ async def upload_and_translate(
             detail="File must have a filename",
         )
 
-    extension = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    extension = file_extension(file.filename)
     if extension not in SUPPORTED_FORMATS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -140,14 +174,20 @@ async def upload_and_translate(
             detail="File is empty.",
         )
 
-    # Parse the document to extract text
-    parser = DocumentParser()
+    # Extract up front so a corrupt or textless file is rejected with a 400 now,
+    # rather than becoming a job the user has to poll before learning it failed.
     try:
-        text_content = parser.parse(file_bytes, file.filename)
-    except DocumentParseError as e:
+        segments = get_handler(file.filename, target_lang=target_lang).extract(file_bytes)
+    except DocumentFormatError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
+        )
+
+    if not any(segment.translatable for segment in segments):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No translatable text found in this document.",
         )
 
     # Create the job record
@@ -171,18 +211,19 @@ async def upload_and_translate(
         filename=file.filename,
         size_bytes=len(file_bytes),
         provider=provider,
+        segments=len(segments),
     )
 
     # Launch background translation task with proper exception tracking
     settings = APISettings()
     provider_manager = ProviderManager(settings)
-    translator = DocumentTranslator(provider_manager, parser)
+    translator = DocumentTranslator(provider_manager)
 
     task = asyncio.create_task(
         _run_translation_background(
             translator=translator,
             job_id=job.id,
-            text_content=text_content,
+            file_bytes=file_bytes,
             user_id=user.id,
             provider_key_id=provider_key_id,
         )
@@ -212,9 +253,9 @@ def _task_done_callback(task: asyncio.Task) -> None:
 
 async def _run_translation_background(
     translator: DocumentTranslator,
-    job_id: object,
-    text_content: str,
-    user_id: object,
+    job_id: uuid.UUID,
+    file_bytes: bytes,
+    user_id: uuid.UUID,
     provider_key_id: str | None,
 ) -> None:
     """Run document translation in a background task with its own DB session."""
@@ -229,7 +270,7 @@ async def _run_translation_background(
 
         await translator.translate_document(
             job=job,
-            text_content=text_content,
+            file_bytes=file_bytes,
             user=user,
             db=db,
             provider_key_id=provider_key_id,
@@ -268,7 +309,7 @@ async def list_jobs(
 
 @router.get("/jobs/{job_id}", response_model=DocumentJobDetailResponse)
 async def get_job_status(
-    job_id: str,
+    job_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DocumentJobDetailResponse:
@@ -304,19 +345,56 @@ async def get_job_status(
         # Preview: first 500 characters of translated content
         response.translated_preview = job.result.translated_content[:500]
 
+    # Selected column-wise on purpose: the artifact row also holds the entire
+    # output file, which must not be pulled into memory just to report stats.
+    artifact_result = await db.execute(
+        select(
+            DocumentArtifact.segment_count,
+            DocumentArtifact.translated_segments,
+            DocumentArtifact.failed_segments,
+            DocumentArtifact.format_preserved,
+            DocumentArtifact.filename,
+        ).where(DocumentArtifact.job_id == job_id)
+    )
+    artifact = artifact_result.one_or_none()
+    if artifact is not None:
+        response.segment_count = artifact.segment_count
+        response.translated_segments = artifact.translated_segments
+        response.failed_segments = artifact.failed_segments
+        response.format_preserved = artifact.format_preserved
+        response.output_filename = artifact.filename
+
     return response
+
+
+@router.get("/formats", response_model=SupportedFormatsResponse)
+async def list_supported_formats() -> SupportedFormatsResponse:
+    """List the file formats accepted for translation and how each is handled."""
+    from src.api.services.document_format import HANDLERS_BY_EXTENSION
+
+    notes = format_notes()
+    formats = [
+        SupportedFormat(
+            extension=extension,
+            output_extension=handler_class.output_extension,
+            format_preserved=handler_class.preserves_format,
+            note=notes.get(extension),
+        )
+        for extension, handler_class in sorted(HANDLERS_BY_EXTENSION.items())
+    ]
+    return SupportedFormatsResponse(formats=formats, max_file_size_bytes=MAX_FILE_SIZE)
 
 
 @router.get("/jobs/{job_id}/download")
 async def download_translated_document(
-    job_id: str,
+    job_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> PlainTextResponse:
-    """Download the translated document content as a text file.
+) -> Response:
+    """Download the translated document in its original file format.
 
-    Only available for completed jobs. Returns the translated text
-    with Content-Disposition header for file download.
+    Only available for completed jobs. Jobs created before format preservation
+    existed have no stored file, so those fall back to a plain-text download.
     """
     result = await db.execute(
         select(DocumentJob).where(DocumentJob.id == job_id, DocumentJob.user_id == user.id)
@@ -334,24 +412,36 @@ async def download_translated_document(
             detail=f"Job is not completed yet. Current status: {job.status}",
         )
 
+    artifact_result = await db.execute(
+        select(DocumentArtifact).where(DocumentArtifact.job_id == job_id)
+    )
+    artifact = artifact_result.scalar_one_or_none()
+
+    if artifact:
+        return Response(
+            content=artifact.content,
+            media_type=artifact.mime_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"',
+                "Content-Length": str(artifact.byte_size),
+            },
+        )
+
     if not job.result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Translation result not found",
         )
 
-    # Generate a filename based on original
     original_name = (
         job.original_filename.rsplit(".", 1)[0]
         if "." in job.original_filename
         else job.original_filename
     )
-    download_filename = f"{original_name}-translated.txt"
-
     return PlainTextResponse(
         content=job.result.translated_content,
         headers={
-            "Content-Disposition": f'attachment; filename="{download_filename}"',
+            "Content-Disposition": f'attachment; filename="{original_name}-translated.txt"',
         },
     )
 
@@ -399,6 +489,7 @@ async def delete_jobs(
     # Remove stored translations first, then the jobs themselves. Bulk deletes
     # bypass ORM cascades, so the child rows are handled explicitly.
     await db.execute(sql_delete(DocumentResult).where(DocumentResult.job_id.in_(job_ids)))
+    await db.execute(sql_delete(DocumentArtifact).where(DocumentArtifact.job_id.in_(job_ids)))
     await db.execute(sql_delete(DocumentJob).where(DocumentJob.id.in_(job_ids)))
     await db.commit()
 
@@ -413,7 +504,7 @@ async def delete_jobs(
 
 @router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job(
-    job_id: str,
+    job_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -433,11 +524,15 @@ async def delete_job(
         # impossible to clear. The background task tolerates a missing record.
         log.warning(
             "document_job_deleted_while_active",
-            job_id=job_id,
+            job_id=str(job_id),
             user_id=str(user.id),
             job_status=job.status,
         )
 
+    # Removed explicitly rather than via ORM cascade: the artifact relationship is
+    # never loaded, so letting the ORM handle it would fetch the whole output file
+    # just to delete it — and on backends without FK enforcement it would leak.
+    await db.execute(sql_delete(DocumentArtifact).where(DocumentArtifact.job_id == job.id))
     await db.delete(job)
     await db.commit()
-    log.info("document_job_deleted", job_id=job_id, user_id=str(user.id))
+    log.info("document_job_deleted", job_id=str(job_id), user_id=str(user.id))

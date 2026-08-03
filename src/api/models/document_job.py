@@ -41,3 +41,13 @@ class DocumentJob(Base):
         # would try to NULL out DocumentResult.job_id, which is non-nullable.
         cascade="all, delete-orphan",
     )
+    artifact = relationship(
+        "DocumentArtifact",
+        back_populates="job",
+        uselist=False,
+        # Deliberately not eager-loaded: this row holds the entire output file, so
+        # listing jobs must not pull every translated document into memory. The
+        # download endpoint queries it directly, and deletes are left to the
+        # database's ON DELETE CASCADE rather than loading the blob to remove it.
+        passive_deletes=True,
+    )

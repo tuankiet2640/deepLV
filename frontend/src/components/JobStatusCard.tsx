@@ -16,6 +16,14 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
 export function JobStatusCard({ job, onDownload, onDelete }: JobStatusCardProps) {
   const status = STATUS_STYLES[job.status] ?? { bg: "bg-gray-100", text: "text-gray-800", label: "Unknown" };
 
+  // PDF has no editable text layer, so the backend delivers it as DOCX. Derived
+  // from the filename rather than fetched, since the job list omits output details.
+  const convertedFromPdf = job.original_filename.toLowerCase().endsWith(".pdf");
+
+  // A completed job can still carry a message: segments that failed keep their
+  // source wording, which is a warning about the result, not a failure of it.
+  const isWarning = job.status === "completed" && Boolean(job.error_message);
+
   return (
     <div className="border border-dlv-border rounded-lg p-4 bg-white">
       <div className="flex items-center justify-between">
@@ -30,6 +38,9 @@ export function JobStatusCard({ job, onDownload, onDelete }: JobStatusCardProps)
             <span>{job.source_lang} &rarr; {job.target_lang}</span>
             <span className="capitalize">{job.provider}</span>
             <span>{new Date(job.created_at).toLocaleString()}</span>
+            {job.status === "completed" && convertedFromPdf && (
+              <span className="text-gray-400">returned as DOCX</span>
+            )}
           </div>
         </div>
 
@@ -72,7 +83,9 @@ export function JobStatusCard({ job, onDownload, onDelete }: JobStatusCardProps)
       </div>
 
       {job.error_message && (
-        <p className="mt-2 text-sm text-red-600">{job.error_message}</p>
+        <p className={`mt-2 text-sm ${isWarning ? "text-amber-600" : "text-red-600"}`}>
+          {job.error_message}
+        </p>
       )}
     </div>
   );

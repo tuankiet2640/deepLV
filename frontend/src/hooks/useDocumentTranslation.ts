@@ -13,6 +13,12 @@ export interface DocumentJob {
   created_at: string;
   completed_at?: string | null;
   error_message?: string | null;
+  /** Only present on the job detail endpoint, not in the list response. */
+  segment_count?: number | null;
+  translated_segments?: number | null;
+  failed_segments?: number | null;
+  format_preserved?: boolean | null;
+  output_filename?: string | null;
 }
 
 interface UploadParams {
@@ -121,9 +127,11 @@ export function useDocumentTranslation(): UseDocumentTranslationResult {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
+      // The server names the file, including its extension — a translated DOCX
+      // comes back as DOCX, and a PDF comes back as DOCX.
       const disposition = res.headers.get("Content-Disposition");
       const filenameMatch = disposition?.match(/filename="?([^"]+)"?/);
-      a.download = filenameMatch?.[1] ?? `translated-${jobId}.txt`;
+      a.download = filenameMatch?.[1] ?? `translated-${jobId}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
