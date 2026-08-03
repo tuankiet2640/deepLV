@@ -7,15 +7,17 @@ and downloading translated results.
 import asyncio
 
 import structlog
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import async_session, get_db
 from src.api.middleware.dependencies import get_current_user
 from src.api.models.document_job import DocumentJob
+from src.api.models.document_result import DocumentResult
 from src.api.models.user import User
 from src.api.services.document_parser import (
     SUPPORTED_FORMATS,
@@ -352,3 +354,91 @@ async def download_translated_document(
             "Content-Disposition": f'attachment; filename="{download_filename}"',
         },
     )
+
+
+VALID_JOB_STATUSES = ("pending", "processing", "completed", "failed")
+FINISHED_JOB_STATUSES = ("completed", "failed")
+
+
+class DeleteJobsResponse(BaseModel):
+    deleted: int
+
+
+@router.delete("/jobs", response_model=DeleteJobsResponse)
+async def delete_jobs(
+    job_status: str | None = Query(default=None, alias="status"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DeleteJobsResponse:
+    """Bulk-delete the current user's document jobs.
+
+    Without a ``status`` filter this clears every finished job (completed and
+    failed) and leaves in-flight work alone. Pass ``status`` to target a single
+    state, e.g. ``?status=completed``.
+    """
+    if job_status is None:
+        target_statuses = list(FINISHED_JOB_STATUSES)
+    elif job_status in VALID_JOB_STATUSES:
+        target_statuses = [job_status]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status: {job_status}. "
+            f"Valid values: {', '.join(VALID_JOB_STATUSES)}",
+        )
+
+    id_result = await db.execute(
+        select(DocumentJob.id).where(
+            DocumentJob.user_id == user.id,
+            DocumentJob.status.in_(target_statuses),
+        )
+    )
+    job_ids = list(id_result.scalars().all())
+    if not job_ids:
+        return DeleteJobsResponse(deleted=0)
+
+    # Remove stored translations first, then the jobs themselves. Bulk deletes
+    # bypass ORM cascades, so the child rows are handled explicitly.
+    await db.execute(sql_delete(DocumentResult).where(DocumentResult.job_id.in_(job_ids)))
+    await db.execute(sql_delete(DocumentJob).where(DocumentJob.id.in_(job_ids)))
+    await db.commit()
+
+    log.info(
+        "document_jobs_bulk_deleted",
+        user_id=str(user.id),
+        count=len(job_ids),
+        statuses=target_statuses,
+    )
+    return DeleteJobsResponse(deleted=len(job_ids))
+
+
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_job(
+    job_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a single document job and its stored translation."""
+    result = await db.execute(
+        select(DocumentJob).where(DocumentJob.id == job_id, DocumentJob.user_id == user.id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document job not found",
+        )
+
+    if job.status in ("pending", "processing"):
+        # Allowed on purpose: a job wedged in an active state would otherwise be
+        # impossible to clear. The background task tolerates a missing record.
+        log.warning(
+            "document_job_deleted_while_active",
+            job_id=job_id,
+            user_id=str(user.id),
+            job_status=job.status,
+        )
+
+    await db.delete(job)
+    await db.commit()
+    log.info("document_job_deleted", job_id=job_id, user_id=str(user.id))

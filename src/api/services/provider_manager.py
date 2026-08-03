@@ -4,6 +4,8 @@ Handles routing translation requests to the appropriate provider
 based on user preferences, BYOK keys, and admin credits.
 """
 
+from dataclasses import dataclass
+
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,35 +58,50 @@ PROVIDER_INFO = [
 ]
 
 
+@dataclass
+class ResolvedProvider:
+    """A provider instance plus how its API key was obtained.
+
+    ``used_own_key`` is what callers should use to decide whether to charge
+    credits: BYOK translations are free, admin-key translations are not.
+    """
+
+    provider: TranslationProvider
+    used_own_key: bool
+
+
 class ProviderManager:
     """Manages translation provider routing and credit deduction.
 
     Resolves which provider to use based on request parameters:
-    1. If provider_key_id is given, use user's BYOK key
-    2. If provider != marianmt and no key, use admin key with credits
-    3. Default to marianmt (free)
+    1. marianmt is always free and local
+    2. If provider_key_id is given, use that specific BYOK key
+    3. Otherwise, if the user has stored a key for this provider, use it (free)
+    4. Otherwise, use the admin key and charge credits
     """
 
     def __init__(self, settings: APISettings):
         self.settings = settings
 
-    async def get_provider(
+    async def resolve(
         self,
         provider_name: str,
         user: User,
         db: AsyncSession,
         provider_key_id: str | None = None,
-    ) -> TranslationProvider:
+    ) -> ResolvedProvider:
         """Resolve and instantiate the correct provider.
 
         Args:
             provider_name: The requested provider (marianmt, openai, etc.)
             user: The authenticated user making the request.
             db: Database session for looking up keys.
-            provider_key_id: Optional specific user key to use.
+            provider_key_id: Optional specific user key to use. When omitted,
+                any key the user has stored for this provider is used instead
+                of falling straight through to the admin key.
 
         Returns:
-            An instantiated TranslationProvider.
+            A ResolvedProvider carrying the provider and the key source.
 
         Raises:
             ProviderError: If provider cannot be resolved.
@@ -94,14 +111,69 @@ class ProviderManager:
 
         # MarianMT is always free and does not need an API key
         if provider_name == "marianmt":
-            return MarianMTProvider(worker_url=self.settings.model_worker_url)
+            return ResolvedProvider(
+                provider=MarianMTProvider(worker_url=self.settings.model_worker_url),
+                used_own_key=False,
+            )
 
-        # Try user's own key first (BYOK)
+        # An explicitly chosen BYOK key wins
         if provider_key_id:
-            return await self._resolve_user_key(provider_name, user, db, provider_key_id)
+            return ResolvedProvider(
+                provider=await self._resolve_user_key(provider_name, user, db, provider_key_id),
+                used_own_key=True,
+            )
+
+        # No key was named: prefer a key the user has already stored for this
+        # provider before spending credits on the admin key.
+        own_key = await self._resolve_stored_user_key(provider_name, user, db)
+        if own_key is not None:
+            return ResolvedProvider(provider=own_key, used_own_key=True)
 
         # Fall back to admin key (requires credits)
-        return await self._resolve_admin_key(provider_name, db)
+        return ResolvedProvider(
+            provider=await self._resolve_admin_key(provider_name, db),
+            used_own_key=False,
+        )
+
+    async def get_provider(
+        self,
+        provider_name: str,
+        user: User,
+        db: AsyncSession,
+        provider_key_id: str | None = None,
+    ) -> TranslationProvider:
+        """Resolve a provider instance, discarding the key-source information."""
+        resolved = await self.resolve(provider_name, user, db, provider_key_id)
+        return resolved.provider
+
+    async def _resolve_stored_user_key(
+        self,
+        provider_name: str,
+        user: User,
+        db: AsyncSession,
+    ) -> TranslationProvider | None:
+        """Build a provider from the user's most recent stored key, if any."""
+        result = await db.execute(
+            select(ProviderKey)
+            .where(
+                ProviderKey.user_id == user.id,
+                ProviderKey.provider == provider_name,
+            )
+            .order_by(ProviderKey.created_at.desc())
+            .limit(1)
+        )
+        key_record = result.scalar_one_or_none()
+        if not key_record:
+            return None
+
+        log.info(
+            "byok_key_auto_selected",
+            user_id=str(user.id),
+            provider=provider_name,
+            key_id=str(key_record.id),
+        )
+        api_key = decrypt_api_key(key_record.encrypted_api_key)
+        return self._create_provider(provider_name, api_key)
 
     async def _resolve_user_key(
         self,
@@ -135,15 +207,32 @@ class ProviderManager:
             )
         )
         admin_key = result.scalar_one_or_none()
-        if not admin_key:
-            raise ProviderError(
-                provider_name,
-                f"No admin key available for {provider_name}. "
-                f"Please add your own API key via /api/v1/providers/keys.",
-            )
+        if admin_key:
+            api_key = decrypt_api_key(admin_key.encrypted_api_key)
+            return self._create_provider(provider_name, api_key)
 
-        api_key = decrypt_api_key(admin_key.encrypted_api_key)
-        return self._create_provider(provider_name, api_key)
+        # Fall back to an operator-supplied key from the environment
+        # (ADMIN_OPENAI_KEY / ADMIN_HUGGINGFACE_KEY / ADMIN_GOOGLE_KEY).
+        env_key = self._admin_key_from_settings(provider_name)
+        if env_key:
+            log.info("admin_key_from_env_used", provider=provider_name)
+            return self._create_provider(provider_name, env_key)
+
+        raise ProviderError(
+            provider_name,
+            f"No admin key available for {provider_name}. "
+            f"Please add your own API key via /api/v1/providers/keys.",
+        )
+
+    def _admin_key_from_settings(self, provider_name: str) -> str | None:
+        """Read the configured admin key for a provider, if one is set."""
+        env_keys = {
+            "openai": self.settings.admin_openai_key,
+            "huggingface": self.settings.admin_huggingface_key,
+            "google": self.settings.admin_google_key,
+        }
+        value = env_keys.get(provider_name, "").strip()
+        return value or None
 
     async def deduct_credits(
         self,

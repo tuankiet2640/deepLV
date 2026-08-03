@@ -67,9 +67,19 @@ class DocumentTranslator:
                 target_lang=job.target_lang,
             )
 
+            # Resolve the provider first so we know whether this run uses the
+            # user's own key (free) or the platform admin key (costs credits).
+            resolved = await self.provider_manager.resolve(
+                provider_name=job.provider,
+                user=user,
+                db=db,
+                provider_key_id=provider_key_id,
+            )
+            provider = resolved.provider
+
             # Reserve credits BEFORE translation if using admin key
             total_chars = len(text_content)
-            if not provider_key_id and job.provider != "marianmt":
+            if not resolved.used_own_key and job.provider != "marianmt":
                 credit_ok = await self.provider_manager.deduct_credits(
                     user=user,
                     db=db,
@@ -88,14 +98,6 @@ class DocumentTranslator:
                     job.completed_at = datetime.now(UTC)
                     await db.commit()
                     return
-
-            # Get the translation provider
-            provider = await self.provider_manager.get_provider(
-                provider_name=job.provider,
-                user=user,
-                db=db,
-                provider_key_id=provider_key_id,
-            )
 
             # Chunk the text
             chunks = self.parser.chunk_text(text_content)
