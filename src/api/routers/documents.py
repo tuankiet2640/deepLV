@@ -383,8 +383,7 @@ async def download_translated_document(
         media_type=media_type,
         headers={
             "Content-Disposition": (
-                f'attachment; filename="{ascii_filename}"; '
-                f"filename*=UTF-8''{encoded_filename}"
+                f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{encoded_filename}"
             ),
         },
     )

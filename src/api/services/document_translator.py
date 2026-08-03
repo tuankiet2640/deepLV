@@ -135,9 +135,7 @@ class DocumentTranslator:
                     )
                     output_format = "docx"
                 except Exception as rebuild_err:
-                    log.warning(
-                        "docx_rebuild_failed", job_id=str(job.id), error=str(rebuild_err)
-                    )
+                    log.warning("docx_rebuild_failed", job_id=str(job.id), error=str(rebuild_err))
             elif extension == "pdf":
                 try:
                     translated_file_bytes = self.parser.build_translated_pdf(

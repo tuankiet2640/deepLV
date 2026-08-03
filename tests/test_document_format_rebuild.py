@@ -134,9 +134,7 @@ def _make_job(filename: str) -> DocumentJob:
 
 
 class TestDocumentTranslator:
-    async def test_docx_job_rebuilds_format_preserving_output(
-        self, fake_provider_manager, fake_db
-    ):
+    async def test_docx_job_rebuilds_format_preserving_output(self, fake_provider_manager, fake_db):
         parser = DocumentParser()
         translator = DocumentTranslator(fake_provider_manager, parser)
         original = _make_docx_bytes([("Xin chao", False)])
