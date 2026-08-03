@@ -3,11 +3,15 @@ import { useCallback, useRef, useState } from "react";
 const ACCEPTED_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/html",
   "text/plain",
 ];
 
-const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
-const MAX_SIZE_MB = 20;
+const ACCEPTED_EXTENSIONS = [".docx", ".pptx", ".xlsx", ".html", ".htm", ".txt", ".pdf"];
+// Must match MAX_FILE_SIZE in src/api/routers/documents.py.
+const MAX_SIZE_MB = 10;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
 interface FileUploadProps {
@@ -24,7 +28,7 @@ export function FileUpload({ onFileSelect, selectedFile, disabled = false }: Fil
   const validateFile = useCallback((file: File): string | null => {
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
     if (!ACCEPTED_TYPES.includes(file.type) && !ACCEPTED_EXTENSIONS.includes(ext)) {
-      return `Invalid file type. Accepted formats: PDF, DOCX, TXT`;
+      return `Invalid file type. Accepted formats: DOCX, PPTX, XLSX, HTML, TXT, PDF`;
     }
     if (file.size > MAX_SIZE_BYTES) {
       return `File too large. Maximum size is ${MAX_SIZE_MB}MB`;
@@ -103,7 +107,7 @@ export function FileUpload({ onFileSelect, selectedFile, disabled = false }: Fil
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.docx,.txt"
+          accept={ACCEPTED_EXTENSIONS.join(",")}
           onChange={handleInputChange}
           className="hidden"
           disabled={disabled}
@@ -125,7 +129,10 @@ export function FileUpload({ onFileSelect, selectedFile, disabled = false }: Fil
             </svg>
             <p className="font-medium text-gray-700">Drop your document here or click to browse</p>
             <p className="text-sm text-gray-500">
-              Supports PDF, DOCX, TXT (max {MAX_SIZE_MB}MB)
+              DOCX, PPTX, XLSX, HTML, TXT, PDF (max {MAX_SIZE_MB}MB)
+            </p>
+            <p className="text-xs text-gray-400">
+              Formatting is preserved. PDF is returned as DOCX.
             </p>
           </div>
         )}

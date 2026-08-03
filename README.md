@@ -13,7 +13,8 @@ Client -> FastAPI Gateway -> Redis Cache -> Translation Providers
 ## Features
 
 - **Multi-provider translation** - Choose your translation engine per request
-- **Document translation** - Upload PDF, DOCX, or TXT files for background translation
+- **Document translation** - Upload DOCX, PPTX, XLSX, HTML, TXT or PDF and get the file back
+  in the same format with its styling, images, tables and layout intact (PDF returns DOCX)
 - **Bring Your Own Key (BYOK)** - Store your own API keys (encrypted at rest with Fernet/AES)
 - **Credit system** - Admin-managed provider keys with pay-per-use credits
 - **Admin dashboard** - User management, usage analytics, provider key management, pricing control
@@ -257,7 +258,8 @@ deepLV/
         cache.py               # Redis caching
         encryption.py          # Fernet encryption for stored keys
         provider_manager.py    # Provider resolution and routing
-        document_parser.py     # PDF/DOCX/TXT extraction + chunking
+        document_format/       # Format-preserving extract + re-inject per file type
+        text_chunker.py        # Splits oversized segments for provider limits
         document_translator.py # Async document translation
         language_detect.py     # Auto language detection
         providers/             # Translation provider implementations

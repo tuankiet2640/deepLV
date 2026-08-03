@@ -58,7 +58,8 @@ export function DocumentTranslatePage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Document Translation</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Upload a document and translate it using AI. Choose your provider or use platform credits.
+          Upload a document and get it back in the same format, with fonts, images, tables and
+          layout intact. Choose your provider or use platform credits.
         </p>
       </div>
 
