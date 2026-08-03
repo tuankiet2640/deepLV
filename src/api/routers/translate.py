@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
-from src.api.middleware.dependencies import get_user_from_api_key
+from src.api.middleware.dependencies import get_user_from_api_key_or_jwt
 from src.api.models.api_key import APIKey
 from src.api.models.usage_log import UsageLog
 from src.api.models.user import User
@@ -50,7 +50,7 @@ class LanguagesResponse(BaseModel):
 async def translate(
     req: TranslateRequest,
     request: Request,
-    auth: tuple[User, APIKey] = Depends(get_user_from_api_key),
+    auth: tuple[User, "APIKey | None"] = Depends(get_user_from_api_key_or_jwt),
     db: AsyncSession = Depends(get_db),
 ) -> TranslateResponse:
     user, api_key = auth
@@ -58,7 +58,8 @@ async def translate(
 
     # Rate limit check
     rate_limiter = request.app.state.rate_limiter
-    allowed, remaining = await rate_limiter.check(str(api_key.id))
+    rate_key = str(api_key.id) if api_key else str(user.id)
+    allowed, remaining = await rate_limiter.check(rate_key)
     if not allowed:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -110,7 +111,7 @@ async def translate(
             _log_usage(
                 db,
                 user.id,
-                api_key.id,
+                api_key.id if api_key else None,
                 source_lang,
                 req.target_lang,
                 len(req.text),
@@ -171,7 +172,7 @@ async def translate(
         _log_usage(
             db,
             user.id,
-            api_key.id,
+            api_key.id if api_key else None,
             source_lang,
             req.target_lang,
             len(req.text),
