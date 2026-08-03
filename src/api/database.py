@@ -7,14 +7,17 @@ from src.shared.config import APISettings
 
 settings = APISettings()
 
-# Supabase PgBouncer (transaction mode) requires prepared_statement_cache_size=0
-# and SSL with verification disabled (Supabase pooler uses self-signed certs)
-connect_args: dict = {}
-if "pooler.supabase.com" in settings.database_url or "supabase" in settings.database_url:
-    ssl_context = ssl_module.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl_module.CERT_NONE
-    connect_args = {"prepared_statement_cache_size": 0, "ssl": ssl_context}
+# Always disable prepared statement caching for compatibility with PgBouncer/Supabase pooler.
+# This is safe even without PgBouncer — asyncpg handles its own caching.
+ssl_context = ssl_module.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl_module.CERT_NONE
+
+connect_args: dict = {
+    "prepared_statement_cache_size": 0,
+    "statement_cache_size": 0,
+    "ssl": ssl_context,
+}
 
 engine = create_async_engine(
     settings.database_url,
