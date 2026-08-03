@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Download and convert models during build
 COPY scripts/ scripts/
-RUN python scripts/download_models.py --output-dir ./models --pairs en-vi vi-en en-ja ja-en
+RUN python scripts/download_models.py --output-dir ./models --pairs en-de de-en en-fr fr-en en-es es-en en-zh zh-en en-ja ja-en en-vi vi-en en-ko ko-en en-pt pt-en en-ru ru-en
 
 FROM python:3.11-slim
 
@@ -30,7 +30,7 @@ COPY src/ src/
 COPY scripts/ scripts/
 
 ENV MODEL_DIR=/app/models
-ENV MODEL_CACHE_SIZE=4
+ENV MODEL_CACHE_SIZE=6
 
 EXPOSE 8001
 
