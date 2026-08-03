@@ -56,7 +56,11 @@ export function useTranslation(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-API-Key": localStorage.getItem("dlv_api_key") ?? "demo",
+            ...(localStorage.getItem("dlv_api_key")
+              ? { "X-API-Key": localStorage.getItem("dlv_api_key")! }
+              : localStorage.getItem("dlv_token")
+                ? { "Authorization": `Bearer ${localStorage.getItem("dlv_token")}` }
+                : {}),
           },
           body: JSON.stringify({
             text: trimmed,
