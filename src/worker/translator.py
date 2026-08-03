@@ -78,10 +78,7 @@ def _translate_direct(
 
     if len(tokens) > MAX_INPUT_TOKENS:
         # Split tokens into chunks of max MAX_INPUT_TOKENS tokens each
-        chunks = [
-            tokens[i : i + MAX_INPUT_TOKENS]
-            for i in range(0, len(tokens), MAX_INPUT_TOKENS)
-        ]
+        chunks = [tokens[i : i + MAX_INPUT_TOKENS] for i in range(0, len(tokens), MAX_INPUT_TOKENS)]
         translated_parts = []
         for chunk in chunks:
             results = translator.translate_batch(
