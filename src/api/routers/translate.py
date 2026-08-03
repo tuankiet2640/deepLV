@@ -56,16 +56,17 @@ async def translate(
     user, api_key = auth
     start = time.monotonic()
 
-    # Rate limit check
+    # Rate limit check (skip if Redis unavailable)
     rate_limiter = request.app.state.rate_limiter
-    rate_key = str(api_key.id) if api_key else str(user.id)
-    allowed, remaining = await rate_limiter.check(rate_key)
-    if not allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded",
-            headers={"Retry-After": "60"},
-        )
+    if rate_limiter is not None:
+        rate_key = str(api_key.id) if api_key else str(user.id)
+        allowed, remaining = await rate_limiter.check(rate_key)
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded",
+                headers={"Retry-After": "60"},
+            )
 
     # Language detection
     detected = False
