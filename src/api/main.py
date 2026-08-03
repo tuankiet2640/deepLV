@@ -56,7 +56,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await asyncio.sleep(wait)
 
     if not db_ready:
-        log.error("database_unavailable", msg="Could not connect after 5 attempts. App will start but DB features will fail.")
+        log.error(
+            "database_unavailable",
+            msg="Could not connect after 5 attempts. App will start degraded.",
+        )
 
     # Sweep orphaned document jobs stuck in "processing" state
     if db_ready:
