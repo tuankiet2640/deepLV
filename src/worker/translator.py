@@ -6,6 +6,8 @@ from src.worker.model_cache import ModelCache
 
 log = structlog.get_logger()
 
+MAX_INPUT_TOKENS = 512
+
 SUPPORTED_PAIRS: set[tuple[str, str]] = set()
 _LANG_CODES = ["en", "de", "fr", "es", "zh", "ja", "vi", "ko", "pt", "ru"]
 for lang in _LANG_CODES:
@@ -73,6 +75,21 @@ def _translate_direct(
     translator, tokenizer = model_cache.get_translator(source_lang, target_lang)
 
     tokens = tokenizer.Encode(text, out_type=str)
+
+    if len(tokens) > MAX_INPUT_TOKENS:
+        # Split tokens into chunks of max MAX_INPUT_TOKENS tokens each
+        chunks = [tokens[i : i + MAX_INPUT_TOKENS] for i in range(0, len(tokens), MAX_INPUT_TOKENS)]
+        translated_parts = []
+        for chunk in chunks:
+            results = translator.translate_batch(
+                [chunk],
+                beam_size=4,
+                max_decoding_length=512,
+            )
+            translated_tokens = results[0].hypotheses[0]
+            translated_parts.append(tokenizer.Decode(translated_tokens))
+        return " ".join(translated_parts)
+
     results = translator.translate_batch(
         [tokens],
         beam_size=4,
