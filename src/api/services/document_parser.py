@@ -10,6 +10,10 @@ import structlog
 
 log = structlog.get_logger()
 
+# Formats we can reconstruct as a translated file in their original format.
+# Everything else (txt) falls back to a plain-text download.
+REBUILDABLE_FORMATS = {"docx", "pdf"}
+
 # Maximum characters per chunk for translation
 MAX_CHUNK_SIZE = 5000
 
@@ -38,7 +42,7 @@ class DocumentParser:
         Raises:
             DocumentParseError: If format is unsupported or parsing fails.
         """
-        extension = self._get_extension(filename)
+        extension = self.get_extension(filename)
 
         if extension == "pdf":
             return self.parse_pdf(file_bytes)
@@ -94,11 +98,7 @@ class DocumentParser:
             Extracted text content.
         """
         try:
-            from docx import Document
-
-            doc = Document(io.BytesIO(file_bytes))
-            paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-
+            paragraphs = self._docx_paragraph_texts(file_bytes)
             content = "\n\n".join(paragraphs)
             if not content.strip():
                 raise DocumentParseError("DOCX file contains no text content.")
@@ -108,6 +108,57 @@ class DocumentParser:
             raise
         except Exception as e:
             raise DocumentParseError(f"Failed to parse DOCX: {e}") from e
+
+    def _docx_paragraph_texts(self, file_bytes: bytes) -> list[str]:
+        """Return the non-empty paragraph texts of a DOCX, in document order.
+
+        This exact filter (skip paragraphs whose text is blank) is also used by
+        ``build_translated_docx`` when walking the document to substitute
+        translated text back in, so the two must stay in lockstep: the Nth
+        entry returned here must always correspond to the Nth non-empty
+        paragraph encountered when re-walking ``doc.paragraphs``.
+        """
+        from docx import Document
+
+        doc = Document(io.BytesIO(file_bytes))
+        return [para.text for para in doc.paragraphs if para.text.strip()]
+
+    def parse_paragraphs(self, file_bytes: bytes, filename: str) -> list[str]:
+        """Parse a document into its constituent paragraphs (or pages, for PDF).
+
+        Unlike ``parse``, which returns one flattened string, this preserves
+        the paragraph boundaries needed to rebuild a translated file in its
+        original format (see ``build_translated_docx``/``build_translated_pdf``).
+
+        Args:
+            file_bytes: Raw bytes of the uploaded file.
+            filename: Original filename (used to determine format).
+
+        Returns:
+            Non-empty paragraph/page texts, in document order.
+
+        Raises:
+            DocumentParseError: If format is unsupported or parsing fails.
+        """
+        extension = self.get_extension(filename)
+
+        if extension == "docx":
+            paragraphs = self._docx_paragraph_texts(file_bytes)
+            if not paragraphs:
+                raise DocumentParseError("DOCX file contains no text content.")
+            return paragraphs
+        elif extension == "pdf":
+            content = self.parse_pdf(file_bytes)
+            return [p for p in content.split("\n\n") if p.strip()]
+        elif extension == "txt":
+            content = self.parse_txt(file_bytes)
+            paragraphs = [p for p in content.split("\n\n") if p.strip()]
+            return paragraphs or [content]
+        else:
+            raise DocumentParseError(
+                f"Unsupported file format: .{extension}. "
+                f"Supported formats: {', '.join(sorted(SUPPORTED_FORMATS))}"
+            )
 
     def parse_txt(self, file_bytes: bytes) -> str:
         """Extract text from a plain text file.
@@ -133,6 +184,99 @@ class DocumentParser:
             raise
         except Exception as e:
             raise DocumentParseError(f"Failed to parse text file: {e}") from e
+
+    def build_translated_docx(
+        self, original_file_bytes: bytes, translated_paragraphs: list[str]
+    ) -> bytes:
+        """Rebuild a DOCX with paragraph text replaced by its translation.
+
+        Reopens the original document and walks its paragraphs in the same
+        order/filter as ``_docx_paragraph_texts``, substituting each non-empty
+        paragraph's text with the corresponding translated entry. This keeps
+        the original styles, headers/footers, and non-text paragraphs intact;
+        only body paragraph text changes.
+
+        Args:
+            original_file_bytes: The originally uploaded DOCX bytes.
+            translated_paragraphs: Translated text, one entry per non-empty
+                paragraph, in the same order ``_docx_paragraph_texts`` returns.
+
+        Returns:
+            Bytes of the rebuilt DOCX file.
+        """
+        from docx import Document
+
+        doc = Document(io.BytesIO(original_file_bytes))
+        index = 0
+        for para in doc.paragraphs:
+            if not para.text.strip():
+                continue
+            if index < len(translated_paragraphs):
+                self._set_paragraph_text(para, translated_paragraphs[index])
+            index += 1
+
+        out = io.BytesIO()
+        doc.save(out)
+        return out.getvalue()
+
+    def _set_paragraph_text(self, paragraph: object, new_text: str) -> None:
+        """Replace a paragraph's visible text while preserving its formatting.
+
+        Keeps the first run (and its font/bold/italic/etc.) and empties any
+        remaining runs, rather than rebuilding runs from scratch, so
+        character-level formatting on the paragraph's dominant run survives.
+        """
+        runs = paragraph.runs
+        if not runs:
+            paragraph.add_run(new_text)
+            return
+        runs[0].text = new_text
+        for run in runs[1:]:
+            run.text = ""
+
+    def build_translated_pdf(self, translated_paragraphs: list[str]) -> bytes:
+        """Render translated paragraphs as a new, simply-flowed PDF.
+
+        PDFs don't expose an editable text layer the way DOCX does, so exact
+        layout (fonts, positions, images) can't be preserved. Instead this
+        generates a fresh, readable PDF containing all translated text,
+        flowed paragraph by paragraph rather than dumping it as a .txt file.
+
+        Args:
+            translated_paragraphs: Translated paragraph/page texts, in order.
+
+        Returns:
+            Bytes of the generated PDF file.
+        """
+        from xml.sax.saxutils import escape
+
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=LETTER,
+            leftMargin=inch,
+            rightMargin=inch,
+            topMargin=inch,
+            bottomMargin=inch,
+        )
+        styles = getSampleStyleSheet()
+        body_style = styles["BodyText"]
+
+        flowables = []
+        for paragraph_text in translated_paragraphs:
+            # Reportlab's Paragraph interprets its text as a small XML dialect;
+            # escape it so literal &, <, > in translated text don't break rendering.
+            safe_text = escape(paragraph_text).replace("\n", "<br/>")
+            flowables.append(Paragraph(safe_text, body_style))
+            flowables.append(Spacer(1, 12))
+
+        doc.build(flowables)
+        return buffer.getvalue()
 
     def chunk_text(self, text: str, max_chunk_size: int = MAX_CHUNK_SIZE) -> list[str]:
         """Split text into chunks suitable for translation.
@@ -212,7 +356,7 @@ class DocumentParser:
         sentences = re.split(r"(?<=[.!?])\s+", text)
         return [s for s in sentences if s.strip()]
 
-    def _get_extension(self, filename: str) -> str:
+    def get_extension(self, filename: str) -> str:
         """Get lowercase file extension without dot."""
         if "." not in filename:
             return ""

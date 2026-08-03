@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
@@ -34,6 +34,13 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 # File size limit: 10 MB
 MAX_FILE_SIZE = 10 * 1024 * 1024
+
+# Media types for format-preserving downloads (docx/pdf); anything else
+# (or a job completed before this was added) falls back to plain text.
+OUTPUT_MEDIA_TYPES = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pdf": "application/pdf",
+}
 
 # Track background tasks to prevent silent exception swallowing
 _background_tasks: set[asyncio.Task] = set()
@@ -141,10 +148,11 @@ async def upload_and_translate(
             detail="File is empty.",
         )
 
-    # Parse the document to extract text
+    # Parse the document into paragraphs (preserves structure for
+    # format-preserving rebuild of the translated DOCX/PDF)
     parser = DocumentParser()
     try:
-        text_content = parser.parse(file_bytes, file.filename)
+        paragraphs = parser.parse_paragraphs(file_bytes, file.filename)
     except DocumentParseError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -183,7 +191,8 @@ async def upload_and_translate(
         _run_translation_background(
             translator=translator,
             job_id=job.id,
-            text_content=text_content,
+            paragraphs=paragraphs,
+            original_file_bytes=file_bytes,
             user_id=user.id,
             provider_key_id=provider_key_id,
         )
@@ -214,7 +223,8 @@ def _task_done_callback(task: asyncio.Task) -> None:
 async def _run_translation_background(
     translator: DocumentTranslator,
     job_id: object,
-    text_content: str,
+    paragraphs: list[str],
+    original_file_bytes: bytes,
     user_id: object,
     provider_key_id: str | None,
 ) -> None:
@@ -230,7 +240,8 @@ async def _run_translation_background(
 
         await translator.translate_document(
             job=job,
-            text_content=text_content,
+            paragraphs=paragraphs,
+            original_file_bytes=original_file_bytes,
             user=user,
             db=db,
             provider_key_id=provider_key_id,
@@ -313,11 +324,12 @@ async def download_translated_document(
     job_id: str,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> PlainTextResponse:
-    """Download the translated document content as a text file.
+) -> Response:
+    """Download the translated document.
 
-    Only available for completed jobs. Returns the translated text
-    with Content-Disposition header for file download.
+    Only available for completed jobs. When the original format could be
+    rebuilt (DOCX/PDF), returns that format with the translated text in
+    place; otherwise falls back to a plain-text file of the translation.
     """
     result = await db.execute(
         select(DocumentJob).where(DocumentJob.id == job_id, DocumentJob.user_id == user.id)
@@ -347,16 +359,28 @@ async def download_translated_document(
         if "." in job.original_filename
         else job.original_filename
     )
-    download_filename = f"{original_name}-translated.txt"
+
+    output_format = job.result.output_format
+    if output_format in OUTPUT_MEDIA_TYPES and job.result.translated_file_bytes:
+        download_filename = f"{original_name}-translated.{output_format}"
+        content: bytes | str = job.result.translated_file_bytes
+        media_type = OUTPUT_MEDIA_TYPES[output_format]
+        response_cls: type[Response] = Response
+    else:
+        download_filename = f"{original_name}-translated.txt"
+        content = job.result.translated_content
+        media_type = "text/plain"
+        response_cls = PlainTextResponse
 
     # Content-Disposition headers must be latin-1 encodable, but filenames can
     # contain arbitrary Unicode (e.g. Vietnamese diacritics). Provide an ASCII
     # fallback plus the RFC 5987 filename* form so browsers use the real name.
-    ascii_filename = download_filename.encode("ascii", "ignore").decode("ascii") or "download.txt"
+    ascii_filename = download_filename.encode("ascii", "ignore").decode("ascii") or "download"
     encoded_filename = quote(download_filename)
 
-    return PlainTextResponse(
-        content=job.result.translated_content,
+    return response_cls(
+        content=content,
+        media_type=media_type,
         headers={
             "Content-Disposition": (
                 f'attachment; filename="{ascii_filename}"; '
