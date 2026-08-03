@@ -52,7 +52,7 @@ def download_and_convert(
 
     # Convert to CTranslate2
     print(f"  [convert] {key} -> CTranslate2 ({quantization}) ...")
-    converter = ctranslate2.converters.OpusMTConverter(str(tmp_dir))
+    converter = ctranslate2.converters.TransformersConverter(str(tmp_dir))
     converter.convert(str(out_path), quantization=quantization)
 
     # Copy SentencePiece model for tokenization
