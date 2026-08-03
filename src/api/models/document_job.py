@@ -32,4 +32,12 @@ class DocumentJob(Base):
 
     # Relationships
     user = relationship("User", backref="document_jobs")
-    result = relationship("DocumentResult", back_populates="job", uselist=False, lazy="selectin")
+    result = relationship(
+        "DocumentResult",
+        back_populates="job",
+        uselist=False,
+        lazy="selectin",
+        # Deleting a job must also remove its stored translation. Without this the ORM
+        # would try to NULL out DocumentResult.job_id, which is non-nullable.
+        cascade="all, delete-orphan",
+    )

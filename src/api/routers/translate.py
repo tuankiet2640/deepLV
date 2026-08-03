@@ -130,7 +130,7 @@ async def translate(
     provider_manager = ProviderManager(settings)
 
     try:
-        provider = await provider_manager.get_provider(
+        resolved = await provider_manager.resolve(
             provider_name=req.provider,
             user=user,
             db=db,
@@ -139,8 +139,10 @@ async def translate(
     except ProviderError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Deduct credits if using admin key (non-BYOK, non-free)
-    if req.provider != "marianmt" and not req.provider_key_id:
+    provider = resolved.provider
+
+    # Deduct credits only when the platform's admin key was used
+    if req.provider != "marianmt" and not resolved.used_own_key:
         has_credits = await provider_manager.deduct_credits(
             user=user, db=db, provider_name=req.provider, char_count=len(req.text)
         )

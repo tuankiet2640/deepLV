@@ -27,8 +27,20 @@ export function DocumentTranslatePage() {
   const [targetLang, setTargetLang] = useState("en");
   const [provider, setProvider] = useState("marianmt");
 
-  const { jobs, isUploading, uploadError, uploadDocument, downloadResult } =
-    useDocumentTranslation();
+  const {
+    jobs,
+    isUploading,
+    uploadError,
+    uploadDocument,
+    downloadResult,
+    deleteJob,
+    clearFinishedJobs,
+    deleteError,
+  } = useDocumentTranslation();
+
+  const finishedCount = jobs.filter(
+    (j) => j.status === "completed" || j.status === "failed",
+  ).length;
 
   const handleSubmit = async () => {
     if (!selectedFile) return;
@@ -132,10 +144,32 @@ export function DocumentTranslatePage() {
       {/* Job History */}
       {jobs.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Translation Jobs</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Translation Jobs</h2>
+            {finishedCount > 0 && (
+              <button
+                onClick={clearFinishedJobs}
+                className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              >
+                Clear finished ({finishedCount})
+              </button>
+            )}
+          </div>
+
+          {deleteError && (
+            <p className="mb-3 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg">
+              {deleteError}
+            </p>
+          )}
+
           <div className="space-y-3">
             {jobs.map((job) => (
-              <JobStatusCard key={job.id} job={job} onDownload={downloadResult} />
+              <JobStatusCard
+                key={job.id}
+                job={job}
+                onDownload={downloadResult}
+                onDelete={deleteJob}
+              />
             ))}
           </div>
         </div>
