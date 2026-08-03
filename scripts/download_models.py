@@ -31,7 +31,7 @@ MODEL_PAIRS = [
 def download_and_convert(
     src: str, tgt: str, model_id: str, output_dir: Path, quantization: str = "int8"
 ) -> None:
-    from transformers import MarianMTModel, MarianTokenizer
+    from transformers import MarianTokenizer
 
     key = f"{src}-{tgt}"
     out_path = output_dir / key
@@ -40,28 +40,23 @@ def download_and_convert(
         print(f"  [skip] {key} already exists at {out_path}")
         return
 
-    print(f"  [download] {model_id} ...")
-    tokenizer = MarianTokenizer.from_pretrained(model_id)
-    model = MarianMTModel.from_pretrained(model_id)
-
-    # Save PyTorch model temporarily
-    tmp_dir = output_dir / f".tmp_{key}"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(str(tmp_dir))
-    tokenizer.save_pretrained(str(tmp_dir))
-
-    # Convert to CTranslate2
-    print(f"  [convert] {key} -> CTranslate2 ({quantization}) ...")
-    converter = ctranslate2.converters.TransformersConverter(str(tmp_dir))
+    # Convert using OpusMTConverter with model_id directly.
+    # This lets CTranslate2 handle the download and conversion internally
+    # without needing a local decoder.yml file.
+    print(f"  [convert] {model_id} -> CTranslate2 ({quantization}) ...")
+    converter = ctranslate2.converters.OpusMTConverter(model_id)
     converter.convert(str(out_path), quantization=quantization)
 
-    # Copy SentencePiece model for tokenization
+    # Download tokenizer separately to get .spm files (especially source.spm)
+    print(f"  [tokenizer] downloading .spm files for {key} ...")
+    tmp_dir = output_dir / f".tmp_{key}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tokenizer = MarianTokenizer.from_pretrained(model_id)
+    tokenizer.save_pretrained(str(tmp_dir))
+
+    # Copy SentencePiece model files for tokenization
     for spm_file in tmp_dir.glob("*.spm"):
         shutil.copy2(spm_file, out_path / spm_file.name)
-
-    # Copy tokenizer config for reference
-    for json_file in tmp_dir.glob("*.json"):
-        shutil.copy2(json_file, out_path / json_file.name)
 
     # Cleanup temp
     shutil.rmtree(tmp_dir)
