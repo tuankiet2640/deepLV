@@ -3,11 +3,14 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC
+from pathlib import Path
 
 import redis.asyncio as redis
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api.metrics import metrics_middleware, metrics_response
 from src.api.middleware.rate_limit import RateLimiter
@@ -66,22 +69,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else:
             await session.commit()
 
-    # Initialize Redis
-    redis_client = redis.from_url(settings.redis_url, decode_responses=True)
-    app.state.redis = redis_client
-    app.state.translation_cache = TranslationCache(redis_client)
-    app.state.rate_limiter = RateLimiter(
-        redis_client,
-        max_requests=settings.rate_limit_requests,
-        window_seconds=settings.rate_limit_window_seconds,
-    )
+    # Initialize Redis (optional — app works without it, just no caching/rate-limiting)
+    try:
+        redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+        await redis_client.ping()
+        app.state.redis = redis_client
+        app.state.translation_cache = TranslationCache(redis_client)
+        app.state.rate_limiter = RateLimiter(
+            redis_client,
+            max_requests=settings.rate_limit_requests,
+            window_seconds=settings.rate_limit_window_seconds,
+        )
+        log.info("redis_connected")
+    except Exception:
+        log.warning("redis_unavailable", msg="Running without cache and rate limiting")
+        app.state.redis = None
+        app.state.translation_cache = None
+        app.state.rate_limiter = None
+
     app.state.settings = settings
     app.state.start_time = time.monotonic()
 
     log.info("api_started", port=settings.api_port)
     yield
 
-    await redis_client.aclose()
+    if app.state.redis:
+        await app.state.redis.aclose()
     log.info("api_shutdown")
 
 
@@ -132,3 +145,19 @@ app.include_router(admin.router, prefix="/api/v1")
 @app.get("/metrics", include_in_schema=False)
 async def metrics() -> Response:
     return metrics_response()
+
+
+# --- Static frontend serving (for Railway/single-container deployment) ---
+_static_dir = Path(__file__).parent.parent.parent / "static"
+if _static_dir.exists():
+    # Serve static assets (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=str(_static_dir / "assets")), name="static-assets")
+
+    # SPA catch-all: serve index.html for any non-API route
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str) -> FileResponse:
+        """Serve the React SPA for all non-API routes."""
+        file_path = _static_dir / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(_static_dir / "index.html"))
