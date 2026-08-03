@@ -28,12 +28,40 @@ MODEL_PAIRS = [
 ]
 
 
+def _write_decoder_yml(tmp_dir: Path, model) -> None:
+    """Generate decoder.yml required by OpusMTConverter.
+
+    Helsinki-NLP OPUS-MT models need this file for CTranslate2 conversion.
+    The file describes the Marian NMT architecture parameters.
+    """
+    vocab_size = model.config.vocab_size
+    dec_depth = model.config.decoder_layers
+    enc_depth = model.config.encoder_layers
+    dim_emb = model.config.d_model
+
+    content = (
+        f"- dec-depth: {dec_depth}\n"
+        f"  dec-cell: ssru\n"
+        f"  enc-depth: {enc_depth}\n"
+        f"  enc-cell: gru\n"
+        f"  tied-embeddings-all: true\n"
+        f"  dim-emb: {dim_emb}\n"
+        f"  dim-vocabs:\n"
+        f"    - {vocab_size}\n"
+        f"    - {vocab_size}\n"
+    )
+
+    decoder_yml_path = tmp_dir / "decoder.yml"
+    with open(decoder_yml_path, "w") as f:
+        f.write(content)
+
+
 def download_and_convert(
     src: str, tgt: str, model_id: str, output_dir: Path, quantization: str = "int8"
 ) -> None:
     import tempfile
 
-    from transformers import MarianTokenizer
+    from transformers import MarianMTModel, MarianTokenizer
 
     key = f"{src}-{tgt}"
     out_path = output_dir / key
@@ -42,22 +70,28 @@ def download_and_convert(
         print(f"  [skip] {key} already exists at {out_path}")
         return
 
-    # Convert directly from HuggingFace model ID using TransformersConverter.
-    # Passing the model ID string (not a local path) lets the converter
-    # download and handle the conversion correctly without null config issues.
-    print(f"  [convert] {model_id} -> CTranslate2 ({quantization}) ...")
-    converter = ctranslate2.converters.TransformersConverter(model_id)
-    converter.convert(str(out_path), quantization=quantization)
-
-    # Download tokenizer to a temp directory and copy .spm files to the
-    # output model directory. The runtime (model_cache.py) needs source.spm
-    # for SentencePiece tokenization.
-    print(f"  [tokenizer] downloading {model_id} tokenizer ...")
+    print(f"  [download] {model_id} ...")
     with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+
+        # Download model and tokenizer from HuggingFace
+        model = MarianMTModel.from_pretrained(model_id)
         tokenizer = MarianTokenizer.from_pretrained(model_id)
+
+        # Save both to the temp directory
+        model.save_pretrained(tmp_dir)
         tokenizer.save_pretrained(tmp_dir)
 
-        tmp_path = Path(tmp_dir)
+        # Generate decoder.yml for OpusMTConverter
+        print(f"  [decoder.yml] generating for {model_id} ...")
+        _write_decoder_yml(tmp_path, model)
+
+        # Convert using OpusMTConverter (produces correct output for SentencePiece)
+        print(f"  [convert] {model_id} -> CTranslate2 ({quantization}) ...")
+        converter = ctranslate2.converters.OpusMTConverter(str(tmp_path))
+        converter.convert(str(out_path), quantization=quantization)
+
+        # Copy .spm files to output directory (runtime needs source.spm)
         for spm_file in tmp_path.glob("*.spm"):
             shutil.copy2(spm_file, out_path / spm_file.name)
 
