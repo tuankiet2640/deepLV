@@ -96,7 +96,9 @@ async def translate(
 
     # Cache check
     cache = request.app.state.translation_cache
-    cached_result = await cache.get(source_lang, req.target_lang, req.text)
+    cached_result = None
+    if cache is not None:
+        cached_result = await cache.get(source_lang, req.target_lang, req.text)
     if cached_result:
         elapsed = (time.monotonic() - start) * 1000
         response = TranslateResponse(
@@ -155,16 +157,17 @@ async def translate(
         raise HTTPException(status_code=503, detail=str(e))
 
     # Cache the result
-    await cache.set(
-        source_lang,
-        req.target_lang,
-        req.text,
-        {
-            "translated_text": translated_text,
-            "source_lang": source_lang,
-            "target_lang": req.target_lang,
-        },
-    )
+    if cache is not None:
+        await cache.set(
+            source_lang,
+            req.target_lang,
+            req.text,
+            {
+                "translated_text": translated_text,
+                "source_lang": source_lang,
+                "target_lang": req.target_lang,
+            },
+        )
 
     elapsed = (time.monotonic() - start) * 1000
 
