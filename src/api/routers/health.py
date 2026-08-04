@@ -28,13 +28,14 @@ async def health(request: Request) -> HealthResponse:
     pg_status = "disconnected"
     worker_status = "disconnected"
 
-    # Check Redis
-    try:
-        redis_client = request.app.state.redis
-        await redis_client.ping()
-        redis_status = "connected"
-    except Exception:
-        log.warning("health_redis_failed", exc_info=True)
+    # Check Redis (optional service -- absent is a normal, not exceptional, state)
+    redis_client = request.app.state.redis
+    if redis_client is not None:
+        try:
+            await redis_client.ping()
+            redis_status = "connected"
+        except Exception:
+            log.warning("health_redis_failed", exc_info=True)
 
     # Check PostgreSQL
     try:

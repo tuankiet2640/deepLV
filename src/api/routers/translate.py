@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.database import get_db
+from src.api.database import async_session, get_db
 from src.api.middleware.dependencies import get_user_from_api_key_or_jwt
 from src.api.models.api_key import APIKey
 from src.api.models.usage_log import UsageLog
@@ -112,7 +112,6 @@ async def translate(
         )
         asyncio.create_task(
             _log_usage(
-                db,
                 user.id,
                 api_key.id if api_key else None,
                 source_lang,
@@ -176,7 +175,6 @@ async def translate(
     # Log usage asynchronously
     asyncio.create_task(
         _log_usage(
-            db,
             user.id,
             api_key.id if api_key else None,
             source_lang,
@@ -209,7 +207,6 @@ async def languages() -> LanguagesResponse:
 
 
 async def _log_usage(
-    db: AsyncSession,
     user_id: object,
     api_key_id: object,
     source_lang: str,
@@ -219,8 +216,18 @@ async def _log_usage(
     latency_ms: float,
     provider: str = "marianmt",
 ) -> None:
+    """Log usage in its own DB session.
+
+    Runs as a detached asyncio.create_task, outside the request's lifecycle,
+    so it can't share the request-scoped `db` session from Depends(get_db):
+    that session may already have an implicit transaction open from earlier
+    work in the same request (making db.begin() here raise "a transaction is
+    already begun"), and FastAPI closes it as soon as the request returns,
+    possibly while this task is still running. A fresh session sidesteps
+    both problems -- same pattern documents.py's background task already uses.
+    """
     try:
-        async with db.begin():
+        async with async_session() as db, db.begin():
             usage = UsageLog(
                 user_id=user_id,
                 api_key_id=api_key_id,
