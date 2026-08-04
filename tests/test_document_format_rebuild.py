@@ -44,6 +44,29 @@ def _make_docx_with_table(paragraph_text: str, table_rows: list[list[str]]) -> b
     return buf.getvalue()
 
 
+def _make_docx_with_textbox(body_paragraph_text: str, textbox_paragraphs: list[str]) -> bytes:
+    """Build a DOCX with a body paragraph plus a text box (``w:txbxContent``)
+    containing its own paragraphs -- mirrors the callout/note-box shapes
+    that live outside python-docx's own paragraph/table object model.
+    """
+    from docx.oxml.ns import qn
+    from lxml import etree
+
+    doc = Document()
+    doc.add_paragraph(body_paragraph_text)
+
+    txbx_content = etree.SubElement(doc.element.body, qn("w:txbxContent"))
+    for text in textbox_paragraphs:
+        p = etree.SubElement(txbx_content, qn("w:p"))
+        r = etree.SubElement(p, qn("w:r"))
+        t = etree.SubElement(r, qn("w:t"))
+        t.text = text
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
 def _make_pdf_bytes(blocks: list[tuple[str, float, float, float, bool]]) -> bytes:
     """Build a single-page Letter PDF with text drawn at given positions.
 
@@ -108,6 +131,21 @@ class TestParseParagraphs:
             "Nguyen Van A",
             "Chuc vu",
             "Ky su phan mem",
+        ]
+
+    def test_docx_textbox_paragraphs_are_included(self):
+        original = _make_docx_with_textbox(
+            "Body paragraph",
+            ["Luu y: note line one", "Note line two"],
+        )
+        parser = DocumentParser()
+
+        paragraphs = parser.parse_paragraphs(original, "doc.docx")
+
+        assert paragraphs == [
+            "Body paragraph",
+            "Luu y: note line one",
+            "Note line two",
         ]
 
     def test_txt_splits_on_blank_lines(self):
@@ -242,6 +280,28 @@ class TestBuildTranslatedDocx:
         assert table.cell(0, 1).text == "Nguyen Van A (translated)"
         assert table.cell(1, 0).text == "Position"
         assert table.cell(1, 1).text == "Software Engineer"
+
+    def test_textbox_paragraphs_are_translated_not_left_in_original_language(self):
+        original = _make_docx_with_textbox(
+            "Body paragraph",
+            ["Luu y: note line one", "Note line two"],
+        )
+        parser = DocumentParser()
+        translated = ["Body translated", "Note: translated line one", "Translated line two"]
+
+        rebuilt = parser.build_translated_docx(original, translated)
+
+        doc = Document(io.BytesIO(rebuilt))
+        assert doc.paragraphs[0].text == "Body translated"
+        from docx.oxml.ns import qn
+        from docx.text.paragraph import Paragraph
+
+        textbox_texts = [
+            Paragraph(p_elem, doc).text
+            for tb in doc.element.body.iter(qn("w:txbxContent"))
+            for p_elem in tb.findall(qn("w:p"))
+        ]
+        assert textbox_texts == ["Note: translated line one", "Translated line two"]
 
 
 class TestBuildTranslatedPdf:
