@@ -105,14 +105,19 @@ curl -X POST http://localhost:8000/api/v1/keys \
 ### Translate Text
 
 ```bash
-# Default provider (MarianMT - free)
+# No account needed at all -- MarianMT only, 20 requests/hour per IP
 curl -X POST http://localhost:8000/api/v1/translate \
-  -H "X-API-Key: dlv_live_..." \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello, how are you?", "source_lang": "en", "target_lang": "de"}'
 # Returns: { "translated_text": "Hallo, wie geht es Ihnen?", "latency_ms": 342, "cached": false }
 
-# With a specific provider (e.g., OpenAI using BYOK)
+# Authenticated (X-API-Key or Bearer JWT) -- MarianMT, 100 req/min per key/account
+curl -X POST http://localhost:8000/api/v1/translate \
+  -H "X-API-Key: dlv_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, how are you?", "source_lang": "en", "target_lang": "de"}'
+
+# With a specific provider (e.g., OpenAI using BYOK) -- requires auth, MarianMT is the only anonymous provider
 curl -X POST http://localhost:8000/api/v1/translate \
   -H "X-API-Key: dlv_live_..." \
   -H "Content-Type: application/json" \
@@ -170,11 +175,7 @@ Direct models exist for all `en <-> X` pairs. Non-English pairs (e.g., `de -> fr
 | GET | `/health` | Health check |
 | GET | `/metrics` | Prometheus metrics |
 | GET | `/api/v1/languages` | List supported languages |
-
-### API Key Required (X-API-Key header)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/translate` | Translate text |
+| POST | `/api/v1/translate` | Translate text -- no auth needed for `provider: "marianmt"` (20 req/hour/IP); every other provider needs an API key or JWT below |
 
 ### JWT Required (Bearer token)
 | Method | Endpoint | Description |

@@ -124,3 +124,22 @@ almost-empty profile page
   login, translation count)
 - Google OAuth login was scoped out of this pass (explicit choice — email
   verification and profile enrichment first)
+
+## Milestone 9: Anonymous Translate Tier — ✅ Shipped
+**Goal:** `/translate` was reachable while signed out (not behind
+`ProtectedRoute`), but every request 401'd — a dead-end UI for anyone
+trying the product before creating an account
+
+- New `get_optional_user` auth dependency: resolves API key/JWT like the
+  existing one, but returns `(None, None)` instead of raising when no
+  credential is present
+- `/translate` now serves anonymous requests for `provider: "marianmt"`
+  only (free, local, no cost) — every other provider still requires
+  sign-in. Anonymous requests are rate-limited at 20/hour per IP
+  (`X-Forwarded-For`-aware), separate from the per-account limiter;
+  usage logging is skipped (no account to attribute it to)
+- Frontend: `ProviderSelector` marks non-MarianMT providers "sign in
+  required" when signed out; `TranslatePage` shows a free-tier banner
+  linking to `/register` and falls back to MarianMT if a session ends
+  mid-selection
+- Documented in the README, Getting Started, and API Reference pages

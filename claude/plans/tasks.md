@@ -117,3 +117,14 @@
 - [x] Frontend: `VerifyEmailPage`, updated Register/Login/ForgotPassword/ResetPassword flows, `AuthContext.refreshUser()`, expanded `ProfilePage` (avatar, display name, preferences, activity stats), cross-device theme sync
 - [x] pytest-asyncio session-scoped event loop fix (`asyncio_default_fixture_loop_scope`/`asyncio_default_test_loop_scope`) — the module-level DB engine was breaking across function-scoped loops when tests ran against a real Postgres
 - [ ] Google OAuth login (explicitly deferred to a follow-up pass)
+
+## Milestone 9: Anonymous Translate Tier
+
+- [x] `get_optional_user` dependency (`src/api/middleware/dependencies.py`) — returns `(None, None)` instead of raising when no credential is present
+- [x] `/translate` accepts anonymous requests for `provider: "marianmt"` only; every other provider still 401s
+- [x] IP-based rate limiting for anonymous requests (20/hour, `X-Forwarded-For`-aware), separate from the per-account limiter
+- [x] Usage logging skipped for anonymous requests (`UsageLog.user_id` is a non-nullable FK)
+- [x] `ProviderManager.resolve()` accepts `user: User | None`
+- [x] Frontend: `ProviderSelector` "sign in required" badges, `TranslatePage` anon-tier banner + MarianMT fallback on session end
+- [x] `tests/test_anonymous_translate.py` + updated `test_api.py`
+- [x] README, Getting Started, and API Reference docs updated
