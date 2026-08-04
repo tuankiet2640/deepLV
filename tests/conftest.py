@@ -56,3 +56,21 @@ async def client(mock_redis):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+async def register_or_skip(client, email: str, password: str):
+    """Register a user, skipping the test if no Postgres is reachable.
+
+    CI runs the test job with no database service (see .github/workflows/ci.yml),
+    so a real connection attempt raises OSError rather than the app returning a
+    clean 500 -- this mirrors test_api.py's test_register_and_login guard.
+    """
+    try:
+        resp = await client.post(
+            "/api/v1/auth/register", json={"email": email, "password": password}
+        )
+    except OSError:
+        pytest.skip("PostgreSQL not available")
+    if resp.status_code == 500:
+        pytest.skip("PostgreSQL not available")
+    return resp

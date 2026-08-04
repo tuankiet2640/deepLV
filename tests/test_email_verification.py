@@ -2,9 +2,9 @@
 
 RESEND_API_KEY is unset in the test environment, so email.send_email()
 no-ops (logs instead of sending) -- these tests never hit the network.
-They need a real Postgres (see tests/conftest.py's `client` fixture doesn't
-provide one; DATABASE_URL must point at a live DB, same as
-test_register_and_login in test_api.py).
+They need a real Postgres; CI's test job has none, so every test goes
+through conftest.py's register_or_skip() to skip gracefully when the DB
+is unreachable (mirroring test_api.py's test_register_and_login).
 """
 
 import pytest
@@ -12,6 +12,8 @@ import pytest
 from src.api.database import async_session
 from src.api.services import otp
 from src.api.services.auth import get_user_by_email
+
+from .conftest import register_or_skip
 
 
 async def _get_raw_otp_code(email: str) -> str:
@@ -26,25 +28,14 @@ async def _get_raw_otp_code(email: str) -> str:
 @pytest.mark.asyncio
 async def test_register_creates_unverified_user(client):
     email = "unverified@example.com"
-    try:
-        resp = await client.post(
-            "/api/v1/auth/register", json={"email": email, "password": "testpassword123"}
-        )
-    except OSError:
-        pytest.skip("PostgreSQL not available")
-    if resp.status_code == 500:
-        pytest.skip("PostgreSQL not available")
+    resp = await register_or_skip(client, email, "testpassword123")
     assert resp.status_code == 201
 
 
 @pytest.mark.asyncio
 async def test_login_blocked_when_unverified(client):
     email = "login-blocked@example.com"
-    reg = await client.post(
-        "/api/v1/auth/register", json={"email": email, "password": "testpassword123"}
-    )
-    if reg.status_code == 500:
-        pytest.skip("PostgreSQL not available")
+    reg = await register_or_skip(client, email, "testpassword123")
     assert reg.status_code == 201
 
     resp = await client.post(
@@ -58,9 +49,7 @@ async def test_login_blocked_when_unverified(client):
 async def test_verify_email_unlocks_login(client):
     email = "verify-me@example.com"
     password = "testpassword123"
-    reg = await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    if reg.status_code == 500:
-        pytest.skip("PostgreSQL not available")
+    await register_or_skip(client, email, password)
 
     code = await _get_raw_otp_code(email)
 
@@ -79,11 +68,7 @@ async def test_verify_email_unlocks_login(client):
 @pytest.mark.asyncio
 async def test_verify_email_rejects_wrong_code(client):
     email = "wrong-code@example.com"
-    reg = await client.post(
-        "/api/v1/auth/register", json={"email": email, "password": "testpassword123"}
-    )
-    if reg.status_code == 500:
-        pytest.skip("PostgreSQL not available")
+    await register_or_skip(client, email, "testpassword123")
 
     await _get_raw_otp_code(email)  # issue a real code, then submit a wrong one
 
@@ -94,11 +79,7 @@ async def test_verify_email_rejects_wrong_code(client):
 @pytest.mark.asyncio
 async def test_verify_email_locks_after_max_attempts(client):
     email = "brute-force@example.com"
-    reg = await client.post(
-        "/api/v1/auth/register", json={"email": email, "password": "testpassword123"}
-    )
-    if reg.status_code == 500:
-        pytest.skip("PostgreSQL not available")
+    await register_or_skip(client, email, "testpassword123")
 
     code = await _get_raw_otp_code(email)
 
@@ -117,13 +98,9 @@ async def test_verify_email_locks_after_max_attempts(client):
 
 
 @pytest.mark.asyncio
-async def test_resend_verification_rate_limited(client, monkeypatch):
+async def test_resend_verification_rate_limited(client):
     email = "resend-spam@example.com"
-    reg = await client.post(
-        "/api/v1/auth/register", json={"email": email, "password": "testpassword123"}
-    )
-    if reg.status_code == 500:
-        pytest.skip("PostgreSQL not available")
+    await register_or_skip(client, email, "testpassword123")
 
     class _AlwaysOverLimitPipeline:
         def zremrangebyscore(self, *a):
@@ -152,11 +129,7 @@ async def test_resend_verification_rate_limited(client, monkeypatch):
 @pytest.mark.asyncio
 async def test_forgot_password_response_has_no_token(client):
     email = "forgot-me@example.com"
-    reg = await client.post(
-        "/api/v1/auth/register", json={"email": email, "password": "testpassword123"}
-    )
-    if reg.status_code == 500:
-        pytest.skip("PostgreSQL not available")
+    await register_or_skip(client, email, "testpassword123")
 
     resp = await client.post("/api/v1/auth/forgot-password", json={"email": email})
     assert resp.status_code == 200

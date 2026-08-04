@@ -6,6 +6,8 @@ from src.api.database import async_session
 from src.api.services import otp
 from src.api.services.auth import get_user_by_email
 
+from .conftest import register_or_skip
+
 TINY_PNG = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108020000009077"
     "53de0000000c4944415478da6360000002000155ff8fa20000000049454e44ae426082"
@@ -13,9 +15,7 @@ TINY_PNG = bytes.fromhex(
 
 
 async def _register_and_login(client, email: str, password: str = "testpassword123") -> str:
-    reg = await client.post("/api/v1/auth/register", json={"email": email, "password": password})
-    if reg.status_code == 500:
-        pytest.skip("PostgreSQL not available")
+    await register_or_skip(client, email, password)
 
     async with async_session() as db:
         user = await get_user_by_email(db, email)
