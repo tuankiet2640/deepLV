@@ -2,6 +2,7 @@ import { useState } from "react";
 import { TranslationPanel } from "../components/TranslationPanel";
 import { ProviderSelector } from "../components/ProviderSelector";
 import { useTranslation } from "../hooks/useTranslation";
+import { useModelWorkerStatus } from "../hooks/useModelWorkerStatus";
 import { CostEstimate } from "../components/CostEstimate";
 
 const LANGUAGES = [
@@ -25,6 +26,7 @@ export function TranslatePage() {
   const [targetLang, setTargetLang] = useState("de");
   const [sourceText, setSourceText] = useState("");
   const [provider, setProvider] = useState("marianmt");
+  const marianmtAvailable = useModelWorkerStatus();
 
   const { translatedText, isLoading, error, latencyMs, cached, detectedLang } = useTranslation(
     sourceText,
@@ -32,6 +34,13 @@ export function TranslatePage() {
     targetLang,
     provider,
   );
+
+  // MarianMT has no direct model for most non-English pairs and pivots
+  // through English (source -> en -> target) instead. That extra hop
+  // compounds errors badly on formal/technical text -- worth a heads-up
+  // rather than silently producing weak output.
+  const isPivotPair =
+    provider === "marianmt" && sourceLang !== "auto" && sourceLang !== "en" && targetLang !== "en";
 
   const handleSwap = () => {
     if (sourceLang === "auto") return;
@@ -100,8 +109,21 @@ export function TranslatePage() {
         {/* Provider selector */}
         <div className="flex items-center border-b border-dlv-border dark:border-dlv-dark-border px-4 py-2 bg-gray-50/50 dark:bg-dlv-dark-bg/50">
           <span className="text-xs text-gray-500 dark:text-gray-400 mr-2">Provider:</span>
-          <ProviderSelector value={provider} onChange={setProvider} compact />
+          <ProviderSelector
+            value={provider}
+            onChange={setProvider}
+            compact
+            marianmtAvailable={marianmtAvailable}
+          />
         </div>
+
+        {isPivotPair && (
+          <div className="px-4 py-2 text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border-b border-dlv-border dark:border-dlv-dark-border">
+            MarianMT has no direct model for this pair, so it translates via English
+            (two hops) -- quality can suffer on formal or technical text. Consider
+            OpenAI or Google for higher accuracy.
+          </div>
+        )}
 
         {/* Translation panels */}
         <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-dlv-border dark:divide-dlv-dark-border min-h-[350px]">

@@ -43,6 +43,11 @@ interface ProviderSelectorProps {
   onChange: (provider: string) => void;
   storedKeyProviders?: string[];
   compact?: boolean;
+  // Whether the MarianMT worker is reachable, per /health's
+  // services.model_worker. null/undefined = unknown (not yet checked, or the
+  // check failed) -- treated as available so a flaky health probe doesn't
+  // itself block the free tier; only an explicit `false` disables it.
+  marianmtAvailable?: boolean | null;
 }
 
 export function ProviderSelector({
@@ -50,7 +55,11 @@ export function ProviderSelector({
   onChange,
   storedKeyProviders = [],
   compact = false,
+  marianmtAvailable,
 }: ProviderSelectorProps) {
+  const isDisabled = (providerId: string) =>
+    providerId === "marianmt" && marianmtAvailable === false;
+
   if (compact) {
     return (
       <select
@@ -59,9 +68,10 @@ export function ProviderSelector({
         className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer border border-dlv-border rounded-md px-2 py-1"
       >
         {PROVIDERS.map((p) => (
-          <option key={p.id} value={p.id}>
+          <option key={p.id} value={p.id} disabled={isDisabled(p.id)}>
             {p.name}
             {storedKeyProviders.includes(p.id) ? " (key saved)" : ""}
+            {isDisabled(p.id) ? " (unavailable)" : ""}
           </option>
         ))}
       </select>
@@ -75,15 +85,19 @@ export function ProviderSelector({
         {PROVIDERS.map((provider) => {
           const hasKey = storedKeyProviders.includes(provider.id);
           const isSelected = value === provider.id;
+          const disabled = isDisabled(provider.id);
 
           return (
             <button
               key={provider.id}
               type="button"
+              disabled={disabled}
               onClick={() => onChange(provider.id)}
               className={`
                 w-full text-left px-4 py-3 rounded-lg border-2 transition-all
-                ${isSelected ? "border-dlv-accent bg-blue-50" : "border-dlv-border hover:border-gray-300 bg-white"}
+                ${disabled ? "opacity-50 cursor-not-allowed bg-gray-50 border-dlv-border" : ""}
+                ${!disabled && isSelected ? "border-dlv-accent bg-blue-50" : ""}
+                ${!disabled && !isSelected ? "border-dlv-border hover:border-gray-300 bg-white" : ""}
               `}
             >
               <div className="flex items-center justify-between">
@@ -96,17 +110,23 @@ export function ProviderSelector({
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-500 mt-0.5">{provider.description}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    {disabled
+                      ? "Not running on this deployment right now -- pick another provider."
+                      : provider.description}
+                  </p>
                 </div>
                 <div className="text-right">
                   <span
                     className={`text-xs font-medium px-2 py-1 rounded ${
-                      provider.isFree
-                        ? "bg-green-100 text-green-700"
-                        : "bg-blue-100 text-blue-700"
+                      disabled
+                        ? "bg-gray-200 text-gray-500"
+                        : provider.isFree
+                          ? "bg-green-100 text-green-700"
+                          : "bg-blue-100 text-blue-700"
                     }`}
                   >
-                    {provider.pricing}
+                    {disabled ? "Unavailable" : provider.pricing}
                   </span>
                 </div>
               </div>

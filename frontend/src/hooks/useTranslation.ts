@@ -52,15 +52,18 @@ export function useTranslation(
       setError(null);
 
       try {
+        const token = localStorage.getItem("dlv_token");
+        const apiKey = localStorage.getItem("dlv_api_key");
         const res = await fetch(`${API_BASE}/translate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(localStorage.getItem("dlv_api_key")
-              ? { "X-API-Key": localStorage.getItem("dlv_api_key")! }
-              : localStorage.getItem("dlv_token")
-                ? { "Authorization": `Bearer ${localStorage.getItem("dlv_token")}` }
-                : {}),
+            // Send both when present -- the backend tries X-API-Key first
+            // and falls back to the JWT (see get_user_from_api_key_or_jwt).
+            // Picking only one here means a stale/invalid stored API key
+            // silently shadows a perfectly valid session token.
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(apiKey ? { "X-API-Key": apiKey } : {}),
           },
           body: JSON.stringify({
             text: trimmed,

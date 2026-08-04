@@ -155,7 +155,8 @@ class DocumentParser:
         return list(self._iter_docx_paragraph_texts(doc))
 
     def _iter_docx_paragraph_texts(self, doc: object) -> Iterator[str]:
-        """Yield non-empty paragraph texts: body paragraphs, then table cells."""
+        """Yield non-empty paragraph texts: body paragraphs, table cells, then
+        text box content (notes/callouts drawn as floating shapes)."""
         for para in doc.paragraphs:
             if para.text.strip():
                 yield para.text
@@ -165,6 +166,30 @@ class DocumentParser:
                     for para in cell.paragraphs:
                         if para.text.strip():
                             yield para.text
+        for para in self._iter_docx_textbox_paragraphs(doc):
+            if para.text.strip():
+                yield para.text
+
+    def _iter_docx_textbox_paragraphs(self, doc: object) -> Iterator[object]:
+        """Yield python-docx Paragraph objects for every paragraph inside a
+        text box (``w:txbxContent``), anywhere in the document body.
+
+        Text boxes -- floating shapes with their own text, commonly used for
+        callout/note boxes -- aren't exposed by python-docx's own object
+        model (no ``doc.textboxes``), so this walks the underlying XML
+        directly and wraps each raw paragraph element in a real ``Paragraph``
+        so callers can read ``.text``/``.runs`` exactly like any other
+        paragraph. Matches both the legacy VML (``v:textbox``) and modern
+        DrawingML (``wps:txbx``) shape formats, since both wrap their text in
+        a ``w:txbxContent`` element with ordinary ``w:p`` children -- only
+        the tag being searched for matters, not what encloses it.
+        """
+        from docx.oxml.ns import qn
+        from docx.text.paragraph import Paragraph
+
+        for txbx_content in doc.element.body.iter(qn("w:txbxContent")):
+            for p_element in txbx_content.findall(qn("w:p")):
+                yield Paragraph(p_element, doc)
 
     def _pdf_text_blocks(self, file_bytes: bytes) -> list[PdfTextBlock]:
         """Extract paragraph-like text blocks from a PDF, page by page.
@@ -321,11 +346,12 @@ class DocumentParser:
     ) -> bytes:
         """Rebuild a DOCX with paragraph text replaced by its translation.
 
-        Reopens the original document and walks its paragraphs and table
-        cells in the same order/filter as ``_docx_paragraph_texts``,
-        substituting each non-empty paragraph's text with the corresponding
-        translated entry. This keeps the original styles, headers/footers,
-        and non-text paragraphs intact; only paragraph text changes.
+        Reopens the original document and walks its paragraphs, table
+        cells, and text box content in the same order/filter as
+        ``_docx_paragraph_texts``, substituting each non-empty paragraph's
+        text with the corresponding translated entry. This keeps the
+        original styles, headers/footers, and non-text paragraphs intact;
+        only paragraph text changes.
 
         Args:
             original_file_bytes: The originally uploaded DOCX bytes.
@@ -355,6 +381,8 @@ class DocumentParser:
                 for cell in row.cells:
                     for para in cell.paragraphs:
                         apply(para)
+        for textbox_para in self._iter_docx_textbox_paragraphs(doc):
+            apply(textbox_para)
 
         out = io.BytesIO()
         doc.save(out)

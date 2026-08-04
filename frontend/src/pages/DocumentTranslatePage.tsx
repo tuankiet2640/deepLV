@@ -4,6 +4,7 @@ import { ProviderSelector } from "../components/ProviderSelector";
 import { DocumentCostEstimate } from "../components/DocumentCostEstimate";
 import { JobStatusCard } from "../components/JobStatusCard";
 import { useDocumentTranslation } from "../hooks/useDocumentTranslation";
+import { useModelWorkerStatus } from "../hooks/useModelWorkerStatus";
 
 const LANGUAGES = [
   { code: "auto", name: "Detect Language" },
@@ -26,6 +27,15 @@ export function DocumentTranslatePage() {
   const [sourceLang, setSourceLang] = useState("auto");
   const [targetLang, setTargetLang] = useState("en");
   const [provider, setProvider] = useState("marianmt");
+  const marianmtAvailable = useModelWorkerStatus();
+
+  // MarianMT has no direct model for most non-English pairs and pivots
+  // through English (source -> en -> target) instead. That extra hop
+  // compounds errors badly on formal/technical documents (contracts, HR
+  // paperwork) -- worth a heads-up rather than silently producing weak
+  // output on something the user may need to sign or submit.
+  const isPivotPair =
+    provider === "marianmt" && sourceLang !== "auto" && sourceLang !== "en" && targetLang !== "en";
 
   const {
     jobs,
@@ -108,7 +118,20 @@ export function DocumentTranslatePage() {
         </div>
 
         {/* Provider selection */}
-        <ProviderSelector value={provider} onChange={setProvider} />
+        <ProviderSelector
+          value={provider}
+          onChange={setProvider}
+          marianmtAvailable={marianmtAvailable}
+        />
+
+        {isPivotPair && (
+          <p className="text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+            MarianMT has no direct model for this pair, so it translates via English
+            (two hops). For formal documents like contracts or HR paperwork this can
+            produce noticeably weaker results -- OpenAI or Google are more reliable
+            choices here.
+          </p>
+        )}
 
         {/* Cost estimate */}
         {selectedFile && (
