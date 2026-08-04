@@ -44,12 +44,14 @@ async def test_register_and_login(client):
 
 
 @pytest.mark.asyncio
-async def test_translate_requires_api_key(client):
+async def test_translate_non_marianmt_requires_auth(client):
+    # MarianMT has an anonymous tier (see test_anonymous_translate.py); every
+    # other provider still requires sign-in.
     resp = await client.post(
         "/api/v1/translate",
-        json={"text": "Hello", "source_lang": "en", "target_lang": "de"},
+        json={"text": "Hello", "source_lang": "en", "target_lang": "de", "provider": "openai"},
     )
-    assert resp.status_code == 422 or resp.status_code == 401
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
