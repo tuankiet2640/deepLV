@@ -31,6 +31,8 @@ class UserSummary(BaseModel):
     id: str
     email: str
     is_admin: bool
+    is_verified: bool
+    display_name: str | None
     credits_balance: float
     created_at: str
     usage_count: int
@@ -46,6 +48,8 @@ class UserDetailResponse(BaseModel):
     id: str
     email: str
     is_admin: bool
+    is_verified: bool
+    display_name: str | None
     credits_balance: float
     created_at: str
     usage_count: int
@@ -150,6 +154,8 @@ async def list_users(
             id=str(row.User.id),
             email=row.User.email,
             is_admin=row.User.is_admin,
+            is_verified=row.User.is_verified,
+            display_name=row.User.display_name,
             credits_balance=row.User.credits_balance,
             created_at=row.User.created_at.isoformat(),
             usage_count=int(row.usage_count),
@@ -195,6 +201,8 @@ async def get_user_detail(
         id=str(user.id),
         email=user.email,
         is_admin=user.is_admin,
+        is_verified=user.is_verified,
+        display_name=user.display_name,
         credits_balance=user.credits_balance,
         created_at=user.created_at.isoformat(),
         usage_count=stats.usage_count,

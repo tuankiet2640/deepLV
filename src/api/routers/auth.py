@@ -2,24 +2,44 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
 from src.api.middleware.dependencies import get_current_user
+from src.api.middleware.rate_limit import RateLimiter
 from src.api.models.password_reset import PasswordResetToken
 from src.api.models.user import User
+from src.api.services import email, otp
 from src.api.services.auth import (
     create_access_token,
     get_user_by_email,
     hash_password,
     verify_password,
 )
+from src.shared.config import APISettings
 
 log = structlog.get_logger()
 router = APIRouter(prefix="/auth", tags=["auth"])
+settings = APISettings()
+
+
+async def _check_rate_limit(
+    request: Request, key: str, max_requests: int, window_seconds: int
+) -> None:
+    """Ad hoc rate limit for auth endpoints tighter than the global /translate limiter."""
+    redis_client = request.app.state.redis
+    if redis_client is None:
+        return
+    limiter = RateLimiter(redis_client, max_requests=max_requests, window_seconds=window_seconds)
+    allowed, _ = await limiter.check(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please try again later.",
+        )
 
 
 class RegisterRequest(BaseModel):
@@ -50,7 +70,6 @@ class ForgotPasswordRequest(BaseModel):
 
 class ForgotPasswordResponse(BaseModel):
     message: str
-    reset_token: str
 
 
 class ResetPasswordRequest(BaseModel):
@@ -86,6 +105,7 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)) -> 
         email=req.email,
         password_hash=hash_password(req.password),
         is_admin=is_first_user,
+        is_verified=False,
     )
     db.add(user)
     await db.commit()
@@ -94,6 +114,12 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)) -> 
     if is_first_user:
         log.info("first_user_admin_bootstrap", user_id=str(user.id), email=user.email)
     log.info("user_registered", user_id=str(user.id), email=user.email)
+
+    code = await otp.create_otp(db, user.id)
+    sent = await email.send_verification_email(user.email, code)
+    if not sent:
+        log.warning("verification_email_not_sent", user_id=str(user.id))
+
     return RegisterResponse(
         id=str(user.id),
         email=user.email,
@@ -107,9 +133,97 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)) -> LoginR
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "email_not_verified",
+                "message": "Please verify your email before logging in.",
+            },
+        )
+
+    user.last_login_at = datetime.now(UTC)
+    await db.commit()
+
     token = create_access_token(user.id)
     log.info("user_login", user_id=str(user.id))
     return LoginResponse(access_token=token, expires_in=86400)
+
+
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+_OTP_REASON_MESSAGES = {
+    "not_found": "No pending verification code for this account. Request a new one.",
+    "expired": "This code has expired. Request a new one.",
+    "locked": "Too many incorrect attempts. Request a new code.",
+    "invalid": "Incorrect code.",
+}
+
+
+@router.post("/verify-email", response_model=LoginResponse)
+async def verify_email(
+    req: VerifyEmailRequest, request: Request, db: AsyncSession = Depends(get_db)
+) -> LoginResponse:
+    await _check_rate_limit(
+        request, f"otp-verify:{req.email.lower()}", max_requests=8, window_seconds=600
+    )
+
+    user = await get_user_by_email(db, req.email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid code")
+
+    if user.is_verified:
+        token = create_access_token(user.id)
+        return LoginResponse(access_token=token, expires_in=86400)
+
+    ok, reason = await otp.verify_otp(db, user.id, req.code)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_OTP_REASON_MESSAGES.get(reason, "Invalid code"),
+        )
+
+    user.is_verified = True
+    user.last_login_at = datetime.now(UTC)
+    await db.commit()
+
+    log.info("email_verified", user_id=str(user.id))
+    token = create_access_token(user.id)
+    return LoginResponse(access_token=token, expires_in=86400)
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    req: ResendVerificationRequest, request: Request, db: AsyncSession = Depends(get_db)
+) -> dict[str, str]:
+    await _check_rate_limit(
+        request, f"otp-resend:{req.email.lower()}", max_requests=3, window_seconds=600
+    )
+
+    user = await get_user_by_email(db, req.email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No account found with that email"
+        )
+
+    if user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already verified"
+        )
+
+    code = await otp.create_otp(db, user.id)
+    sent = await email.send_verification_email(user.email, code)
+    if not sent:
+        log.warning("verification_email_not_sent", user_id=str(user.id))
+
+    return {"message": "Verification code sent."}
 
 
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
@@ -138,10 +252,13 @@ async def forgot_password(
 
     log.info("password_reset_requested", user_id=str(user.id), email=user.email)
 
-    # In production, you would email this token. For now, return it directly.
+    reset_link = f"{settings.frontend_url}/reset-password?token={reset_token}"
+    sent = await email.send_password_reset_email(user.email, reset_link)
+    if not sent:
+        log.warning("password_reset_email_not_sent", user_id=str(user.id))
+
     return ForgotPasswordResponse(
-        message="Password reset token generated. Use it to reset your password.",
-        reset_token=reset_token,
+        message="If an account exists for that email, a password reset link has been sent."
     )
 
 

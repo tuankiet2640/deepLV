@@ -31,8 +31,8 @@ export function RegisterPage() {
 
     try {
       await register(email, password);
-      showToast("Account created successfully!", "success");
-      navigate("/login?registered=true", { replace: true });
+      showToast("Account created! Check your email for a verification code.", "success");
+      navigate(`/verify-email?email=${encodeURIComponent(email)}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

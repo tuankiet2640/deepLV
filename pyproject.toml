@@ -53,6 +53,13 @@ select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Session-scoped loop: src/api/database.py's async engine/pool is a
+# module-level singleton bound to whichever loop first uses it, so
+# function-scoped loops (the default) break pooled connections across
+# tests that hit a real Postgres (RuntimeError: attached to a different
+# loop). Session scope matches the engine's actual lifetime.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 
 [tool.mypy]

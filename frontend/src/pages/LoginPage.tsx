@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
+import { AuthError, useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 
 export function LoginPage() {
@@ -11,15 +11,20 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const successMessage = searchParams.get("registered") === "true"
-    ? "Account created successfully. Please log in."
-    : null;
+  const successMessage =
+    searchParams.get("registered") === "true"
+      ? "Account created successfully. Please log in."
+      : searchParams.get("verified") === "true"
+        ? "Email verified. Please log in."
+        : null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setUnverifiedEmail(null);
     setIsSubmitting(true);
 
     try {
@@ -27,7 +32,12 @@ export function LoginPage() {
       showToast("Signed in successfully", "success");
       navigate("/translate", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      if (err instanceof AuthError && err.code === "email_not_verified") {
+        setUnverifiedEmail(email);
+        setError(err.message);
+      } else {
+        setError(err instanceof Error ? err.message : "Login failed");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -52,6 +62,17 @@ export function LoginPage() {
         {error && (
           <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
             {error}
+            {unverifiedEmail && (
+              <>
+                {" "}
+                <Link
+                  to={`/verify-email?email=${encodeURIComponent(unverifiedEmail)}`}
+                  className="font-medium underline"
+                >
+                  Resend verification email
+                </Link>
+              </>
+            )}
           </div>
         )}
 

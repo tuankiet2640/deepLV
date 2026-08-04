@@ -99,7 +99,21 @@
 - [x] Fix: DOCX tables and text boxes left untranslated (extraction didn't reach them)
 - [x] Fix: PDF translation destroying layout/images (see Milestone 6)
 - [x] UI warning when MarianMT will pivot through English (quality ceiling on formal/technical text)
-- [x] `.env.example` and `RAILWAY.md` reconciled with actual deployed behavior (this pass)
+- [x] `.env.example` and `RAILWAY.md` reconciled with actual deployed behavior (ongoing, most recently for Resend)
 - [ ] Docker healthchecks + graceful shutdown (see Milestone 4 — same items, still open)
 - [ ] Row Level Security on Supabase tables (flagged by Supabase's advisor; not yet assessed/enabled — enabling without policies would lock out the app's own backend, so this needs real policy design, not a blind `ENABLE ROW LEVEL SECURITY`)
 - [ ] Automated regression coverage for the session/transaction and auth-header bugs above (both were verified by hand against a live DB rather than locked in with a committed test)
+
+## Milestone 8: Account Hardening
+
+- [x] `User` model: `is_verified`, `display_name`, `avatar`/`avatar_content_type`, `default_source_lang`/`default_target_lang`, `theme_preference`, `last_login_at`
+- [x] `EmailOTP` model + migration (hashed code, expiry, attempt counter, consumed flag)
+- [x] `src/api/services/email.py`: Resend HTTP API via httpx, log-instead-of-send fallback when unconfigured
+- [x] `src/api/services/otp.py`: generate/hash/create/verify with 15-min expiry and 5-attempt lockout
+- [x] `POST /auth/verify-email` + `/auth/resend-verification`, both rate-limited
+- [x] `login` blocks unverified accounts (403 `email_not_verified`); sets `last_login_at`
+- [x] Fixed: `forgot-password` now emails a reset link instead of returning the token in the API response (and the frontend no longer displays a token)
+- [x] New `users.py` router: `GET`/`PATCH /users/me`, avatar upload/get/delete
+- [x] Frontend: `VerifyEmailPage`, updated Register/Login/ForgotPassword/ResetPassword flows, `AuthContext.refreshUser()`, expanded `ProfilePage` (avatar, display name, preferences, activity stats), cross-device theme sync
+- [x] pytest-asyncio session-scoped event loop fix (`asyncio_default_fixture_loop_scope`/`asyncio_default_test_loop_scope`) — the module-level DB engine was breaking across function-scoped loops when tests ran against a real Postgres
+- [ ] Google OAuth login (explicitly deferred to a follow-up pass)

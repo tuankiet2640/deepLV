@@ -5,22 +5,7 @@ import { DocumentCostEstimate } from "../components/DocumentCostEstimate";
 import { JobStatusCard } from "../components/JobStatusCard";
 import { useDocumentTranslation } from "../hooks/useDocumentTranslation";
 import { useModelWorkerStatus } from "../hooks/useModelWorkerStatus";
-
-const LANGUAGES = [
-  { code: "auto", name: "Detect Language" },
-  { code: "en", name: "English" },
-  { code: "de", name: "German" },
-  { code: "fr", name: "French" },
-  { code: "es", name: "Spanish" },
-  { code: "zh", name: "Chinese" },
-  { code: "ja", name: "Japanese" },
-  { code: "vi", name: "Vietnamese" },
-  { code: "ko", name: "Korean" },
-  { code: "pt", name: "Portuguese" },
-  { code: "ru", name: "Russian" },
-];
-
-const TARGET_LANGUAGES = LANGUAGES.filter((l) => l.code !== "auto");
+import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
 
 export function DocumentTranslatePage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);

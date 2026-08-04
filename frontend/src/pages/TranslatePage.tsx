@@ -4,26 +4,13 @@ import { ProviderSelector } from "../components/ProviderSelector";
 import { useTranslation } from "../hooks/useTranslation";
 import { useModelWorkerStatus } from "../hooks/useModelWorkerStatus";
 import { CostEstimate } from "../components/CostEstimate";
-
-const LANGUAGES = [
-  { code: "auto", name: "Detect language" },
-  { code: "en", name: "English" },
-  { code: "de", name: "German" },
-  { code: "fr", name: "French" },
-  { code: "es", name: "Spanish" },
-  { code: "zh", name: "Chinese" },
-  { code: "ja", name: "Japanese" },
-  { code: "vi", name: "Vietnamese" },
-  { code: "ko", name: "Korean" },
-  { code: "pt", name: "Portuguese" },
-  { code: "ru", name: "Russian" },
-];
-
-const TARGET_LANGUAGES = LANGUAGES.filter((l) => l.code !== "auto");
+import { useAuth } from "../contexts/AuthContext";
+import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
 
 export function TranslatePage() {
-  const [sourceLang, setSourceLang] = useState("auto");
-  const [targetLang, setTargetLang] = useState("de");
+  const { user } = useAuth();
+  const [sourceLang, setSourceLang] = useState(user?.default_source_lang ?? "auto");
+  const [targetLang, setTargetLang] = useState(user?.default_target_lang ?? "de");
   const [sourceText, setSourceText] = useState("");
   const [provider, setProvider] = useState("marianmt");
   const marianmtAvailable = useModelWorkerStatus();

@@ -25,6 +25,7 @@ from src.api.routers import (
     providers,
     translate,
     usage,
+    users,
 )
 from src.api.services.cache import TranslationCache
 from src.shared.config import APISettings
@@ -176,6 +177,7 @@ app.include_router(providers.router, prefix="/api/v1")
 app.include_router(credits.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
+app.include_router(users.router, prefix="/api/v1")
 
 
 # Metrics endpoint (outside /api/v1 — for Prometheus scraping)
