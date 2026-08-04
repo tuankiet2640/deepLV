@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
-  const [token, setToken] = useState("");
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -13,6 +14,11 @@ export function ResetPasswordPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!token) {
+      setError("Invalid or expired link");
+      return;
+    }
 
     if (newPassword !== confirmPassword) {
       setError("Passwords do not match");
@@ -49,13 +55,32 @@ export function ResetPasswordPage() {
     }
   };
 
+  if (!token) {
+    return (
+      <div className="min-h-[calc(100vh-200px)] flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md text-center">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Invalid or expired link</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+            This password reset link is missing or no longer valid.
+          </p>
+          <Link
+            to="/forgot-password"
+            className="inline-block mt-6 text-dlv-accent font-medium hover:underline"
+          >
+            Request a new link
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[calc(100vh-200px)] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Reset Password</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-            Enter your reset token and choose a new password.
+            Choose a new password for your account.
           </p>
         </div>
 
@@ -75,21 +100,6 @@ export function ResetPasswordPage() {
           onSubmit={handleSubmit}
           className="bg-white dark:bg-dlv-dark-card rounded-xl shadow-sm border border-dlv-border dark:border-dlv-dark-border p-6 space-y-5"
         >
-          <div>
-            <label htmlFor="token" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Reset Token
-            </label>
-            <input
-              id="token"
-              type="text"
-              required
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Paste your reset token here"
-              className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-bg dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-dlv-accent focus:border-transparent font-mono"
-            />
-          </div>
-
           <div>
             <label htmlFor="new-password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               New Password

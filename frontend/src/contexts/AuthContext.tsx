@@ -14,6 +14,26 @@ export interface AuthUser {
   id: string;
   email: string;
   is_admin?: boolean;
+  is_verified?: boolean;
+  display_name?: string | null;
+  has_avatar?: boolean;
+  default_source_lang?: string;
+  default_target_lang?: string;
+  theme_preference?: string;
+  translation_count?: number;
+  credits_balance?: number;
+  created_at?: string;
+  last_login_at?: string | null;
+}
+
+export class AuthError extends Error {
+  code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "AuthError";
+    this.code = code;
+  }
 }
 
 interface AuthContextValue {
@@ -22,11 +42,38 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithToken: (accessToken: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+async function fetchUserProfile(accessToken: string): Promise<AuthUser> {
+  const res = await fetch(`${API_BASE}/users/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load profile (HTTP ${res.status})`);
+  }
+  const data = await res.json();
+  return {
+    id: data.id,
+    email: data.email,
+    is_admin: data.is_admin,
+    is_verified: data.is_verified,
+    display_name: data.display_name,
+    has_avatar: data.has_avatar,
+    default_source_lang: data.default_source_lang,
+    default_target_lang: data.default_target_lang,
+    theme_preference: data.theme_preference,
+    translation_count: data.translation_count,
+    credits_balance: data.credits_balance,
+    created_at: data.created_at,
+    last_login_at: data.last_login_at,
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -50,34 +97,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ detail: "Login failed" }));
-      throw new Error(body.detail ?? `Login failed (HTTP ${res.status})`);
-    }
-
-    const data = await res.json();
-    const accessToken: string = data.access_token;
-
-    // Decode JWT payload to extract user info
-    const payload = JSON.parse(atob(accessToken.split(".")[1] ?? ""));
-    const userData: AuthUser = {
-      id: payload.sub ?? payload.user_id ?? "",
-      email,
-      is_admin: payload.is_admin ?? false,
-    };
-
+  const applySession = useCallback(async (accessToken: string) => {
+    const userData = await fetchUserProfile(accessToken);
     localStorage.setItem("dlv_token", accessToken);
     localStorage.setItem("user", JSON.stringify(userData));
     setToken(accessToken);
     setUser(userData);
   }, []);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: "Login failed" }));
+        if (body.detail && typeof body.detail === "object") {
+          throw new AuthError(
+            body.detail.message ?? "Login failed",
+            body.detail.error,
+          );
+        }
+        throw new AuthError(body.detail ?? `Login failed (HTTP ${res.status})`);
+      }
+
+      const data = await res.json();
+      await applySession(data.access_token);
+    },
+    [applySession],
+  );
+
+  const loginWithToken = useCallback(
+    async (accessToken: string) => {
+      await applySession(accessToken);
+    },
+    [applySession],
+  );
 
   const register = useCallback(async (email: string, password: string) => {
     const res = await fetch(`${API_BASE}/auth/register`, {
@@ -90,6 +148,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const body = await res.json().catch(() => ({ detail: "Registration failed" }));
       throw new Error(body.detail ?? `Registration failed (HTTP ${res.status})`);
     }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const storedToken = localStorage.getItem("dlv_token");
+    if (!storedToken) return;
+    const userData = await fetchUserProfile(storedToken);
+    localStorage.setItem("user", JSON.stringify(userData));
+    setUser(userData);
   }, []);
 
   const logout = useCallback(() => {
@@ -107,10 +173,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!token && !!user,
       isLoading,
       login,
+      loginWithToken,
       register,
+      refreshUser,
       logout,
     }),
-    [user, token, isLoading, login, register, logout],
+    [user, token, isLoading, login, loginWithToken, register, refreshUser, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

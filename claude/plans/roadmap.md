@@ -100,4 +100,27 @@ checklist
   Supabase's advisor, not yet addressed. Real exposure if the anon key is
   ever public; not yet assessed for this app's actual usage pattern (direct
   `asyncpg` connection, not Supabase's REST/PostgREST layer)
-- ❌ `.env.example` / `RAILWAY.md` kept in sync as new env vars ship (ongoing)
+- ✅ `.env.example` / `RAILWAY.md` kept in sync as new env vars ship (ongoing;
+  most recently for Milestone 8's Resend variables)
+
+## Milestone 8: Account Hardening — ✅ Shipped
+**Goal:** auth was looser than a product with real user accounts should
+have — no email verification, no working password-reset email, and an
+almost-empty profile page
+
+- Email verification via a 6-digit OTP code on signup (hashed at rest,
+  15-minute expiry, 5-attempt lockout, rate-limited resend/verify
+  endpoints); login is blocked until verified
+- Fixed: `forgot-password` used to return the raw reset token directly in
+  the API JSON response (and the frontend displayed it on screen) instead
+  of emailing it — now sends a real reset link
+- Email delivery via Resend's HTTP API (`src/api/services/email.py`),
+  with a graceful log-instead-of-send fallback when unconfigured (no
+  Resend account needed for local dev)
+- Richer profile: avatar upload (stored as bytes in Postgres, same
+  no-external-storage approach as document results), display name,
+  default source/target language + theme preferences (synced
+  cross-device on login), account activity stats (member since, last
+  login, translation count)
+- Google OAuth login was scoped out of this pass (explicit choice — email
+  verification and profile enrichment first)

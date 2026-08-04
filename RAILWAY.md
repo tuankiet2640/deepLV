@@ -44,6 +44,9 @@ RATE_LIMIT_REQUESTS=60
 RATE_LIMIT_WINDOW_SECONDS=60
 CREDIT_COST_PER_1K_CHARS=5.0
 MODEL_WORKER_URL=http://localhost:8001
+RESEND_API_KEY=re_your_key
+EMAIL_FROM_ADDRESS=onboarding@resend.dev
+FRONTEND_URL=https://YOUR_APP.up.railway.app
 ```
 
 > Replace `YOUR_APP` with your actual Railway domain after first deploy.
@@ -53,6 +56,15 @@ MODEL_WORKER_URL=http://localhost:8001
 > requests fail cleanly (a translation error) rather than doing anything
 > silently wrong. If you do deploy the worker (see below), point this at
 > its Railway-internal URL instead.
+>
+> `RESEND_API_KEY` is optional too — leave it unset and the app still
+> works, it just logs verification codes and password reset links instead
+> of emailing them (fine for testing, not for real users). Get a key at
+> [resend.com](https://resend.com); the sandbox sender
+> `onboarding@resend.dev` only delivers to the account owner's own inbox,
+> so verify a real sending domain before inviting other users. Set
+> `FRONTEND_URL` to your actual Railway domain (not `localhost`) so links
+> in those emails point somewhere real.
 
 ### 5. Deploy
 

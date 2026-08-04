@@ -26,6 +26,12 @@ class APISettings(BaseSettings):
     # Credit pricing
     credit_cost_per_1k_chars: float = 5.0
 
+    # Email delivery (Resend). Blank resend_api_key means outgoing email is
+    # logged instead of sent -- the local-dev path, see services/email.py.
+    resend_api_key: str = ""
+    email_from_address: str = "onboarding@resend.dev"
+    frontend_url: str = "http://localhost:5173"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

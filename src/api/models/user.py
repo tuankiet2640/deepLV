@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, String
+from sqlalchemy import Boolean, DateTime, Float, LargeBinary, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.api.models import Base
@@ -19,6 +19,29 @@ class User(Base):
     credits_balance: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+
+    # Email verification. server_default backfills existing rows as verified
+    # on migration; register() explicitly sets is_verified=False for new signups.
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("true"), nullable=False
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Profile
+    display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    avatar: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    avatar_content_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Preferences
+    default_source_lang: Mapped[str] = mapped_column(
+        String(10), default="auto", server_default="auto", nullable=False
+    )
+    default_target_lang: Mapped[str] = mapped_column(
+        String(10), default="de", server_default="de", nullable=False
+    )
+    theme_preference: Mapped[str] = mapped_column(
+        String(10), default="system", server_default="system", nullable=False
     )
 
     # Relationships

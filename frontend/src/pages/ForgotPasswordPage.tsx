@@ -3,14 +3,13 @@ import { Link } from "react-router-dom";
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
-  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    setResetToken(null);
     setIsSubmitting(true);
 
     try {
@@ -25,8 +24,7 @@ export function ForgotPasswordPage() {
         throw new Error(body.detail ?? `Request failed (HTTP ${res.status})`);
       }
 
-      const data = await res.json();
-      setResetToken(data.reset_token);
+      setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -40,7 +38,7 @@ export function ForgotPasswordPage() {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Forgot Password</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-            Enter your email address and we will generate a reset token.
+            Enter your email address and we&apos;ll send you a reset link.
           </p>
         </div>
 
@@ -50,19 +48,10 @@ export function ForgotPasswordPage() {
           </div>
         )}
 
-        {resetToken && (
-          <div className="mb-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-300 space-y-2">
-            <p className="font-medium">Reset token generated!</p>
-            <p className="font-mono text-xs break-all bg-green-100 dark:bg-green-900/40 p-2 rounded">
-              {resetToken}
-            </p>
-            <p className="text-xs">
-              Use this token on the{" "}
-              <Link to="/reset-password" className="underline font-medium">
-                reset password page
-              </Link>
-              .
-            </p>
+        {submitted && (
+          <div className="mb-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-300">
+            If an account exists for that email, a password reset link has been sent. Check your
+            inbox.
           </div>
         )}
 
@@ -90,7 +79,7 @@ export function ForgotPasswordPage() {
             disabled={isSubmitting}
             className="w-full py-2.5 bg-dlv-accent text-white text-sm font-medium rounded-md hover:bg-dlv-accent/90 disabled:opacity-50 transition-colors"
           >
-            {isSubmitting ? "Sending..." : "Send Reset Token"}
+            {isSubmitting ? "Sending..." : "Send Reset Link"}
           </button>
         </form>
 

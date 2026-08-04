@@ -6,11 +6,13 @@ import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
 import { ToastContainer } from "./components/Toast";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { SessionThemeSync } from "./components/SessionThemeSync";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { TranslatePage } from "./pages/TranslatePage";
 import { DocumentTranslatePage } from "./pages/DocumentTranslatePage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -31,6 +33,7 @@ export default function App() {
       <AuthProvider>
         <ThemeProvider>
         <ToastProvider>
+        <SessionThemeSync />
         <div className="min-h-screen flex flex-col bg-dlv-surface dark:bg-dlv-dark-bg transition-colors">
           <Header />
           <main className="flex-1">
@@ -40,6 +43,7 @@ export default function App() {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
               <Route path="/translate" element={<TranslatePage />} />
               <Route path="/documents" element={<DocumentTranslatePage />} />
               <Route
