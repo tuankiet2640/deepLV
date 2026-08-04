@@ -18,7 +18,7 @@ def build_download_headers(download_filename: str) -> dict[str, str]:
     encoded_filename = quote(download_filename)
     return {
         "Content-Disposition": (
-            f'attachment; filename="{ascii_filename}"; filename*=UTF-8\'\'{encoded_filename}'
+            f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{encoded_filename}"
         ),
     }
 
