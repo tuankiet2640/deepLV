@@ -139,7 +139,7 @@ class DocumentTranslator:
             elif extension == "pdf":
                 try:
                     translated_file_bytes = self.parser.build_translated_pdf(
-                        list(translated_paragraphs)
+                        original_file_bytes, list(translated_paragraphs)
                     )
                     output_format = "pdf"
                 except Exception as rebuild_err:

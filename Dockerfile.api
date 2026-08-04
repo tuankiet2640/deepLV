@@ -31,4 +31,7 @@ HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=15s \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Single worker — Supabase handles the DB scaling, API is lightweight
+# Migrations run inside the app's startup lifespan (src/api/main.py), after
+# table creation, not here — running `alembic upgrade head` before uvicorn
+# starts would race Base.metadata.create_all() on a brand new database.
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-keep-alive", "30"]
