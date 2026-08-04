@@ -14,7 +14,7 @@ from pypdf import PdfReader
 
 from src.api.models.document_job import DocumentJob
 from src.api.models.user import User
-from src.api.services.document_parser import DocumentParser
+from src.api.services.document_parser import DocumentParseError, DocumentParser
 from src.api.services.document_translator import DocumentTranslator
 from src.api.services.provider_manager import ResolvedProvider
 
@@ -41,6 +41,46 @@ def _make_docx_with_table(paragraph_text: str, table_rows: list[list[str]]) -> b
             table.cell(r, c).text = text
     buf = io.BytesIO()
     doc.save(buf)
+    return buf.getvalue()
+
+
+def _make_pdf_bytes(blocks: list[tuple[str, float, float, float, bool]]) -> bytes:
+    """Build a single-page Letter PDF with text drawn at given positions.
+
+    Each entry is (text, x, y, fontsize, bold); y is measured from the page
+    bottom (reportlab's native coordinate system), so a larger y is higher
+    up the page.
+    """
+    from reportlab.lib.pagesizes import LETTER
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=LETTER)
+    for text, x, y, fontsize, bold in blocks:
+        c.setFont("Helvetica-Bold" if bold else "Helvetica", fontsize)
+        c.drawString(x, y, text)
+    c.save()
+    return buf.getvalue()
+
+
+def _make_pdf_bytes_with_image() -> bytes:
+    """Build a single-page PDF with a text block and one embedded image."""
+    from PIL import Image
+    from reportlab.lib.pagesizes import LETTER
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    img = Image.new("RGB", (40, 40), color=(200, 30, 30))
+    img_buf = io.BytesIO()
+    img.save(img_buf, format="PNG")
+    img_buf.seek(0)
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=LETTER)
+    c.setFont("Helvetica", 12)
+    c.drawString(72, 700, "Text with a logo below.")
+    c.drawImage(ImageReader(img_buf), 72, 600, width=40, height=40)
+    c.save()
     return buf.getvalue()
 
 
@@ -85,6 +125,74 @@ class TestParseParagraphs:
         paragraphs = parser.parse_paragraphs(content, "file.txt")
 
         assert paragraphs == ["Just one block of text."]
+
+    def test_pdf_block_extraction_returns_bbox_font_and_bold(self):
+        pdf_bytes = _make_pdf_bytes(
+            [
+                ("Bold Header", 72, 700, 14, True),
+                ("A separate paragraph far below.", 72, 600, 10, False),
+            ]
+        )
+        parser = DocumentParser()
+
+        blocks = parser._pdf_text_blocks(pdf_bytes)
+
+        assert len(blocks) == 2
+        assert blocks[0].text == "Bold Header"
+        assert blocks[0].bold is True
+        assert blocks[0].font_size == pytest.approx(14, abs=0.5)
+        assert blocks[0].page_index == 0
+        x0, top, x1, bottom = blocks[0].bbox
+        assert x0 < x1
+        assert top < bottom
+        assert blocks[1].text == "A separate paragraph far below."
+        assert blocks[1].bold is False
+
+    def test_pdf_close_lines_cluster_into_one_block(self):
+        # Two lines of the same size/style with a small gap belong to the
+        # same paragraph; a bold header right above them does not.
+        pdf_bytes = _make_pdf_bytes(
+            [
+                ("Bold Header", 72, 700, 14, True),
+                ("Body line one of a paragraph.", 72, 680, 10, False),
+                ("Body line two, still same paragraph.", 72, 668, 10, False),
+            ]
+        )
+        parser = DocumentParser()
+
+        blocks = parser._pdf_text_blocks(pdf_bytes)
+
+        assert len(blocks) == 2
+        assert blocks[0].text == "Bold Header"
+        assert blocks[1].text == (
+            "Body line one of a paragraph.\nBody line two, still same paragraph."
+        )
+
+    def test_parse_paragraphs_pdf_returns_one_entry_per_block(self):
+        pdf_bytes = _make_pdf_bytes(
+            [
+                ("First paragraph.", 72, 700, 10, False),
+                ("Second paragraph, far below.", 72, 600, 10, False),
+            ]
+        )
+        parser = DocumentParser()
+
+        paragraphs = parser.parse_paragraphs(pdf_bytes, "doc.pdf")
+
+        assert paragraphs == ["First paragraph.", "Second paragraph, far below."]
+
+    def test_pdf_with_no_text_raises(self):
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=LETTER)
+        c.save()
+        empty_pdf = buf.getvalue()
+        parser = DocumentParser()
+
+        with pytest.raises(DocumentParseError):
+            parser.parse_paragraphs(empty_pdf, "empty.pdf")
 
 
 class TestBuildTranslatedDocx:
@@ -137,31 +245,79 @@ class TestBuildTranslatedDocx:
 
 
 class TestBuildTranslatedPdf:
-    def test_produces_valid_pdf_with_translated_text(self):
+    def test_rebuild_replaces_text(self):
+        original = _make_pdf_bytes([("Hello world.", 72, 700, 12, False)])
         parser = DocumentParser()
 
-        pdf_bytes = parser.build_translated_pdf(["Hello world.", "Second paragraph & more."])
+        rebuilt = parser.build_translated_pdf(original, ["Xin chao the gioi."])
 
-        assert pdf_bytes.startswith(b"%PDF-")
-        reader = PdfReader(io.BytesIO(pdf_bytes))
+        assert rebuilt.startswith(b"%PDF-")
+        reader = PdfReader(io.BytesIO(rebuilt))
         extracted = reader.pages[0].extract_text()
-        assert "Hello world." in extracted
-        assert "Second paragraph & more." in extracted
+        assert "Xin chao the gioi." in extracted
+
+    def test_rebuild_preserves_embedded_image(self):
+        original = _make_pdf_bytes_with_image()
+        parser = DocumentParser()
+        orig_images = PdfReader(io.BytesIO(original)).pages[0].images
+        assert len(orig_images) == 1
+
+        rebuilt = parser.build_translated_pdf(original, ["Van ban voi logo ben duoi."])
+
+        new_images = PdfReader(io.BytesIO(rebuilt)).pages[0].images
+        assert len(new_images) == 1
+        assert new_images[0].data == orig_images[0].data
 
     def test_vietnamese_text_renders_without_tofu_boxes(self):
         # Reportlab's default Helvetica only covers WinAnsi/Latin-1, so
         # Vietnamese diacritics used to come out as "�"/"■" tofu
         # boxes. build_translated_pdf must embed a Unicode-capable font.
+        original = _make_pdf_bytes([("placeholder", 72, 700, 12, False)])
         parser = DocumentParser()
         vietnamese_text = "NGUYỄN THỊ THU UYÊN - Đinh Ngọc Mai, Vũ Thanh Hằng"
 
-        pdf_bytes = parser.build_translated_pdf([vietnamese_text])
+        rebuilt = parser.build_translated_pdf(original, [vietnamese_text])
 
-        reader = PdfReader(io.BytesIO(pdf_bytes))
+        reader = PdfReader(io.BytesIO(rebuilt))
         extracted = reader.pages[0].extract_text()
         assert "�" not in extracted
         assert "■" not in extracted
-        assert vietnamese_text in extracted
+        # Whitespace-normalized: the box may be narrow enough to word-wrap
+        # the text across lines, which is fine -- only character loss/tofu
+        # boxes are the regression this test guards against.
+        assert " ".join(vietnamese_text.split()) in " ".join(extracted.split())
+
+    def test_long_translated_text_does_not_crash(self):
+        # A deliberately tiny original block -- translated text is much
+        # longer than what the box could ever hold, even shrunk to the
+        # font-size floor. Must degrade gracefully (shrink/overflow), not
+        # raise or produce a corrupt PDF.
+        original = _make_pdf_bytes([("Hi", 72, 700, 10, False)])
+        parser = DocumentParser()
+        long_text = "A very long translated sentence that is much longer than the original. " * 5
+
+        rebuilt = parser.build_translated_pdf(original, [long_text])
+
+        assert rebuilt.startswith(b"%PDF-")
+        reader = PdfReader(io.BytesIO(rebuilt))
+        extracted = reader.pages[0].extract_text()
+        # The box is narrow enough that even individual words wrap across
+        # lines at the font-size floor -- strip all whitespace so wrap
+        # points (not just word boundaries) don't break the comparison;
+        # this only checks no characters were lost or corrupted.
+        assert "".join(long_text.split()) in "".join(extracted.split())
+
+    def test_extra_translated_paragraphs_are_ignored(self):
+        original = _make_pdf_bytes([("Only one.", 72, 700, 10, False)])
+        parser = DocumentParser()
+
+        # More translated entries than original blocks should not raise.
+        rebuilt = parser.build_translated_pdf(original, ["Translated.", "Unused."])
+
+        assert rebuilt.startswith(b"%PDF-")
+        reader = PdfReader(io.BytesIO(rebuilt))
+        extracted = reader.pages[0].extract_text()
+        assert "Translated." in extracted
 
 
 @pytest.fixture
@@ -295,3 +451,45 @@ class TestDocumentTranslator:
         result = fake_db.added[0]
         assert "[good]" in result.translated_content
         assert "Translation error in section 2" in result.translated_content
+
+    async def test_pdf_job_rebuilds_format_preserving_output(self, fake_provider_manager, fake_db):
+        parser = DocumentParser()
+        translator = DocumentTranslator(fake_provider_manager, parser)
+        original = _make_pdf_bytes([("Xin chao", 72, 700, 12, False)])
+        job = _make_job("greeting.pdf")
+        user = User(email="u@example.com", password_hash="x")
+
+        await translator.translate_document(
+            job=job,
+            paragraphs=["Xin chao"],
+            original_file_bytes=original,
+            user=user,
+            db=fake_db,
+        )
+
+        assert job.status == "completed"
+        result = fake_db.added[0]
+        assert result.output_format == "pdf"
+        assert result.translated_file_bytes is not None
+        reader = PdfReader(io.BytesIO(result.translated_file_bytes))
+        assert "[Xin chao]" in reader.pages[0].extract_text()
+
+    async def test_pdf_rebuild_failure_falls_back_to_txt(self, fake_provider_manager, fake_db):
+        parser = DocumentParser()
+        # Not real PDF bytes, so build_translated_pdf will raise internally.
+        translator = DocumentTranslator(fake_provider_manager, parser)
+        job = _make_job("broken.pdf")
+        user = User(email="u@example.com", password_hash="x")
+
+        await translator.translate_document(
+            job=job,
+            paragraphs=["Xin chao"],
+            original_file_bytes=b"not a real pdf",
+            user=user,
+            db=fake_db,
+        )
+
+        assert job.status == "completed"
+        result = fake_db.added[0]
+        assert result.output_format == "txt"
+        assert result.translated_file_bytes is None

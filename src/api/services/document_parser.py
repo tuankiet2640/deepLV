@@ -6,6 +6,7 @@ then chunks it for translation.
 
 import io
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 import structlog
 
@@ -19,6 +20,33 @@ REBUILDABLE_FORMATS = {"docx", "pdf"}
 MAX_CHUNK_SIZE = 5000
 
 SUPPORTED_FORMATS = {"pdf", "docx", "txt"}
+
+# A new PDF text block starts when the vertical gap to the previous line
+# exceeds this multiple of the previous line's height.
+PDF_BLOCK_GAP_MULTIPLIER = 1.5
+
+# Shrink-to-fit bounds when redrawing translated text into a PDF block's
+# original bounding box (translated text is rarely the same length as source).
+PDF_MIN_FONT_SIZE = 6.0
+PDF_FONT_SHRINK_STEP = 0.5
+
+
+@dataclass(frozen=True)
+class PdfTextBlock:
+    """One paragraph-like text block extracted from a PDF page.
+
+    Built by clustering pdfplumber's per-line extraction results by vertical
+    proximity. parse_paragraphs() extracts these once (for translation and
+    billing); build_translated_pdf() re-extracts the identical list, in the
+    identical order, from the original bytes, then zips translated text back
+    onto it by index -- the same lockstep pattern used for DOCX paragraphs.
+    """
+
+    page_index: int
+    bbox: tuple[float, float, float, float]  # x0, top, x1, bottom (pdfplumber coords)
+    text: str
+    font_size: float
+    bold: bool
 
 
 class DocumentParseError(Exception):
@@ -138,6 +166,88 @@ class DocumentParser:
                         if para.text.strip():
                             yield para.text
 
+    def _pdf_text_blocks(self, file_bytes: bytes) -> list[PdfTextBlock]:
+        """Extract paragraph-like text blocks from a PDF, page by page.
+
+        Uses pdfplumber's per-line extraction (with bbox and font info per
+        line), then clusters adjacent lines into blocks by vertical
+        proximity -- pdfplumber has no built-in paragraph/block grouper.
+        """
+        import pdfplumber
+
+        blocks: list[PdfTextBlock] = []
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            for page_index, page in enumerate(pdf.pages):
+                lines = page.extract_text_lines()
+                blocks.extend(self._cluster_pdf_lines(lines, page_index))
+        return blocks
+
+    def _line_style(self, line: dict) -> tuple[float, bool]:
+        """Return a line's (font_size, bold) from its first character."""
+        first_char = next(iter(line.get("chars", [])), None)
+        if first_char is None:
+            return (10.0, False)
+        return (first_char["size"], "bold" in first_char["fontname"].lower())
+
+    def _cluster_pdf_lines(self, lines: list[dict], page_index: int) -> list[PdfTextBlock]:
+        """Group adjacent text lines into paragraph-like blocks.
+
+        A new block starts whenever either:
+        - the vertical gap to the previous line exceeds
+          ``PDF_BLOCK_GAP_MULTIPLIER`` times the previous line's height, or
+        - the font size or bold-state changes from the current block's
+          style (a bold header immediately followed by body text, with no
+          extra vertical gap, is still a different block -- a font change
+          is a far more reliable boundary signal than gap distance alone).
+
+        This is an approximation of paragraph boundaries, not exact layout
+        analysis -- acceptable for the ~90% fidelity target. A block's own
+        font_size/bold reflect its first line's style, same "keep the
+        dominant run's formatting" precedent used for DOCX paragraphs.
+        """
+        blocks: list[PdfTextBlock] = []
+        current_lines: list[dict] = []
+        current_style: tuple[float, bool] = (10.0, False)
+
+        def flush() -> None:
+            if not current_lines:
+                return
+            text = "\n".join(line["text"] for line in current_lines if line["text"].strip())
+            if text.strip():
+                x0 = min(line["x0"] for line in current_lines)
+                x1 = max(line["x1"] for line in current_lines)
+                top = min(line["top"] for line in current_lines)
+                bottom = max(line["bottom"] for line in current_lines)
+                font_size, bold = current_style
+                blocks.append(
+                    PdfTextBlock(
+                        page_index=page_index,
+                        bbox=(x0, top, x1, bottom),
+                        text=text,
+                        font_size=font_size,
+                        bold=bold,
+                    )
+                )
+            current_lines.clear()
+
+        previous: dict | None = None
+        for line in lines:
+            if not line["text"].strip():
+                continue
+            style = self._line_style(line)
+            if current_lines and previous is not None:
+                gap = line["top"] - previous["bottom"]
+                line_height = max(previous["bottom"] - previous["top"], 1.0)
+                if gap > PDF_BLOCK_GAP_MULTIPLIER * line_height or style != current_style:
+                    flush()
+            if not current_lines:
+                current_style = style
+            current_lines.append(line)
+            previous = line
+        flush()
+
+        return blocks
+
     def parse_paragraphs(self, file_bytes: bytes, filename: str) -> list[str]:
         """Parse a document into its constituent paragraphs (or pages, for PDF).
 
@@ -163,8 +273,14 @@ class DocumentParser:
                 raise DocumentParseError("DOCX file contains no text content.")
             return paragraphs
         elif extension == "pdf":
-            content = self.parse_pdf(file_bytes)
-            return [p for p in content.split("\n\n") if p.strip()]
+            blocks = self._pdf_text_blocks(file_bytes)
+            paragraphs = [b.text for b in blocks]
+            if not paragraphs:
+                raise DocumentParseError(
+                    "PDF appears to contain no extractable text. "
+                    "Scanned PDFs without OCR are not supported."
+                )
+            return paragraphs
         elif extension == "txt":
             content = self.parse_txt(file_bytes)
             paragraphs = [p for p in content.split("\n\n") if p.strip()]
@@ -259,55 +375,146 @@ class DocumentParser:
         for run in runs[1:]:
             run.text = ""
 
-    def build_translated_pdf(self, translated_paragraphs: list[str]) -> bytes:
-        """Render translated paragraphs as a new, simply-flowed PDF.
+    def build_translated_pdf(
+        self, original_file_bytes: bytes, translated_paragraphs: list[str]
+    ) -> bytes:
+        """Rebuild a PDF in place: occlude each original text block, then
+        redraw translated text into the same bounding box.
 
-        PDFs don't expose an editable text layer the way DOCX does, so exact
-        layout (fonts, positions, images) can't be preserved. Instead this
-        generates a fresh, readable PDF containing all translated text,
-        flowed paragraph by paragraph rather than dumping it as a .txt file.
+        Preserves images, lines, backgrounds, and page layout, since only
+        the detected text-block regions are painted over and redrawn --
+        everything else on the page is untouched. Not pixel-perfect (see
+        limitations below), but targets ~90% visual fidelity versus the
+        prior from-scratch approach, which discarded all layout and images.
 
-        Uses an embedded Unicode font (DejaVu Sans) rather than reportlab's
-        default Helvetica: Helvetica is one of the 14 standard PDF fonts and
-        only covers WinAnsi/Latin-1, so text with Vietnamese (and other
-        non-Latin-1) characters would silently render as "tofu" boxes.
+        Technique: for each page, build a same-size reportlab overlay page
+        that (1) paints an opaque white rectangle over every original text
+        block's bbox, then (2) draws the translated text into that same
+        bbox, shrinking font size to fit if needed. That overlay is then
+        composited onto the original page via ``pypdf``'s ``merge_page``.
+        Note this is occlusion, not true redaction: the original glyphs are
+        still technically present in the PDF underneath the white
+        rectangle, just visually covered -- fine for a translation tool, not
+        a substitute for a security/redaction tool.
+
+        Known fidelity limitations:
+        - Font family always becomes DejaVu Sans (regular/bold); italic and
+          the original font family are not preserved, only a bold/non-bold
+          distinction.
+        - The occlusion fill is always opaque white, so text sitting on a
+          non-white background (shaded cells, colored boxes) will show a
+          white patch behind the translated text.
+        - Original text alignment (center/right/justify) isn't detected;
+          redraw is always left-aligned within the original bbox.
+        - Block clustering approximates paragraph boundaries by vertical
+          gap and font/bold changes; it is not exact layout analysis, and
+          rotated pages or complex multi-column layouts are out of scope.
+        - If translated text is far longer than the original block even at
+          the minimum font size, the overflow is drawn past the box's
+          original bottom edge rather than clipped or raising an error.
 
         Args:
-            translated_paragraphs: Translated paragraph/page texts, in order.
+            original_file_bytes: The originally uploaded PDF bytes.
+            translated_paragraphs: Translated text, one entry per text
+                block, in the same order ``_pdf_text_blocks`` returns.
 
         Returns:
-            Bytes of the generated PDF file.
+            Bytes of the rebuilt PDF file.
         """
-        from xml.sax.saxutils import escape
-
-        from reportlab.lib.pagesizes import LETTER
-        from reportlab.lib.styles import ParagraphStyle
-        from reportlab.lib.units import inch
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+        from pypdf import PdfReader, PdfWriter
 
         self._register_unicode_font()
 
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=LETTER,
-            leftMargin=inch,
-            rightMargin=inch,
-            topMargin=inch,
-            bottomMargin=inch,
-        )
-        body_style = ParagraphStyle("UnicodeBody", fontName="DejaVuSans", fontSize=10, leading=14)
+        blocks = self._pdf_text_blocks(original_file_bytes)
+        pages_to_blocks: dict[int, list[tuple[PdfTextBlock, str]]] = {}
+        for block, translated_text in zip(blocks, translated_paragraphs, strict=False):
+            pages_to_blocks.setdefault(block.page_index, []).append((block, translated_text))
 
-        flowables = []
-        for paragraph_text in translated_paragraphs:
-            # Reportlab's Paragraph interprets its text as a small XML dialect;
-            # escape it so literal &, <, > in translated text don't break rendering.
-            safe_text = escape(paragraph_text).replace("\n", "<br/>")
-            flowables.append(Paragraph(safe_text, body_style))
-            flowables.append(Spacer(1, 12))
+        # Clone into the writer up front (rather than merging onto pages
+        # still owned by a bare PdfReader) so every page is already
+        # attached to the writer before merge_page runs on it.
+        writer = PdfWriter(clone_from=io.BytesIO(original_file_bytes))
 
-        doc.build(flowables)
-        return buffer.getvalue()
+        for page_index, page in enumerate(writer.pages):
+            page_blocks = pages_to_blocks.get(page_index)
+            if page_blocks:
+                page_width = float(page.mediabox.width)
+                page_height = float(page.mediabox.height)
+                overlay_bytes = self._build_pdf_overlay_page(page_width, page_height, page_blocks)
+                overlay_reader = PdfReader(io.BytesIO(overlay_bytes))
+                page.merge_page(overlay_reader.pages[0])
+
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
+
+    def _build_pdf_overlay_page(
+        self,
+        page_width: float,
+        page_height: float,
+        page_blocks: list[tuple["PdfTextBlock", str]],
+    ) -> bytes:
+        """Build a single-page PDF: white rectangles over every block's bbox,
+        then the translated text drawn into those same boxes.
+
+        Both passes happen on one reportlab canvas page, in draw order, so
+        every occlusion rectangle (pass 1) is guaranteed to be painted
+        before any translated text (pass 2) -- otherwise a later block's
+        occlusion could paint over an earlier block's freshly-drawn text.
+        """
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(page_width, page_height))
+
+        c.setFillColorRGB(1, 1, 1)
+        for block, _translated_text in page_blocks:
+            x0, top, x1, bottom = block.bbox
+            c.rect(x0, page_height - bottom, x1 - x0, bottom - top, fill=1, stroke=0)
+
+        for block, translated_text in page_blocks:
+            self._draw_pdf_block_text(c, block, translated_text, page_height)
+
+        c.save()
+        return buf.getvalue()
+
+    def _draw_pdf_block_text(
+        self, c: object, block: "PdfTextBlock", text: str, page_height: float
+    ) -> None:
+        """Draw translated text into a block's original bbox, shrinking font
+        size to fit -- translated text is rarely the same length as source."""
+        from xml.sax.saxutils import escape
+
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        x0, top, x1, bottom = block.bbox
+        height = bottom - top
+        font_name = "DejaVuSans-Bold" if block.bold else "DejaVuSans"
+        font_size = block.font_size or 10.0
+        # Reportlab's Paragraph interprets its text as a small XML dialect;
+        # escape it so literal &, <, > in translated text don't break rendering.
+        safe_text = escape(text).replace("\n", "<br/>")
+
+        # Wrapping to the raw block width degenerates into a single
+        # character per line for very narrow blocks (e.g. a page number),
+        # producing an ugly vertical letter-stack that can run down the
+        # whole page. Floor the wrap width at ~4 characters' worth so
+        # narrow blocks instead overflow a bit to the right -- a much
+        # smaller visual cost than an unbounded vertical explosion.
+        wrap_width = max(x1 - x0, font_size * 4)
+
+        para = Paragraph(safe_text, ParagraphStyle("b", fontName=font_name, fontSize=font_size))
+        _, required_height = para.wrap(wrap_width, height)
+        while required_height > height and font_size > PDF_MIN_FONT_SIZE:
+            font_size = max(PDF_MIN_FONT_SIZE, font_size - PDF_FONT_SHRINK_STEP)
+            wrap_width = max(x1 - x0, font_size * 4)
+            style = ParagraphStyle("b", fontName=font_name, fontSize=font_size)
+            para = Paragraph(safe_text, style)
+            _, required_height = para.wrap(wrap_width, height)
+
+        y = page_height - top - required_height
+        para.drawOn(c, x0, y)
 
     _unicode_font_registered = False
 
