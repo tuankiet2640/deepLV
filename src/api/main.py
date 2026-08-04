@@ -61,6 +61,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             msg="Could not connect after 5 attempts. App will start degraded.",
         )
 
+    # Apply any pending Alembic migrations (schema changes create_all() can't
+    # make to already-existing tables, e.g. new columns). Runs after
+    # create_all() so a brand new database already has every table this
+    # migration touches. Idempotent — safe to run on every startup.
+    if db_ready:
+        try:
+            from alembic import command
+            from alembic.config import Config
+
+            alembic_cfg = Config("alembic.ini")
+            await asyncio.get_event_loop().run_in_executor(
+                None, command.upgrade, alembic_cfg, "head"
+            )
+            log.info("database_migrations_applied")
+        except Exception as e:
+            log.error("database_migration_failed", error=str(e))
+
     # Sweep orphaned document jobs stuck in "processing" state
     if db_ready:
         try:

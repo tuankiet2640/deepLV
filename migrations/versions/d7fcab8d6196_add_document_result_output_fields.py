@@ -19,14 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "document_results", sa.Column("translated_file_bytes", sa.LargeBinary(), nullable=True)
+    # IF NOT EXISTS: this runs on every app startup (see main.py's lifespan),
+    # and a fresh database's tables are created by Base.metadata.create_all()
+    # from the current models (so these columns already exist there) before
+    # this migration ever runs. Only a pre-existing database predating this
+    # migration is actually missing the columns.
+    op.execute(
+        "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS translated_file_bytes BYTEA"
     )
-    op.add_column(
-        "document_results", sa.Column("output_format", sa.String(length=10), nullable=True)
+    op.execute(
+        "ALTER TABLE document_results ADD COLUMN IF NOT EXISTS output_format VARCHAR(10)"
     )
 
 
 def downgrade() -> None:
-    op.drop_column("document_results", "output_format")
-    op.drop_column("document_results", "translated_file_bytes")
+    op.execute("ALTER TABLE document_results DROP COLUMN IF EXISTS output_format")
+    op.execute("ALTER TABLE document_results DROP COLUMN IF EXISTS translated_file_bytes")
