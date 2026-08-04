@@ -48,6 +48,9 @@ interface ProviderSelectorProps {
   // check failed) -- treated as available so a flaky health probe doesn't
   // itself block the free tier; only an explicit `false` disables it.
   marianmtAvailable?: boolean | null;
+  // Signed-out visitors get a limited, IP-rate-limited MarianMT-only tier
+  // (see /api/v1/translate) -- the other providers need a real account.
+  isAuthenticated?: boolean;
 }
 
 export function ProviderSelector({
@@ -56,9 +59,12 @@ export function ProviderSelector({
   storedKeyProviders = [],
   compact = false,
   marianmtAvailable,
+  isAuthenticated = true,
 }: ProviderSelectorProps) {
-  const isDisabled = (providerId: string) =>
+  const isUnavailable = (providerId: string) =>
     providerId === "marianmt" && marianmtAvailable === false;
+  const needsAuth = (providerId: string) => providerId !== "marianmt" && !isAuthenticated;
+  const isDisabled = (providerId: string) => isUnavailable(providerId) || needsAuth(providerId);
 
   if (compact) {
     return (
@@ -71,7 +77,7 @@ export function ProviderSelector({
           <option key={p.id} value={p.id} disabled={isDisabled(p.id)}>
             {p.name}
             {storedKeyProviders.includes(p.id) ? " (key saved)" : ""}
-            {isDisabled(p.id) ? " (unavailable)" : ""}
+            {needsAuth(p.id) ? " (sign in required)" : isUnavailable(p.id) ? " (unavailable)" : ""}
           </option>
         ))}
       </select>
@@ -111,9 +117,11 @@ export function ProviderSelector({
                     )}
                   </div>
                   <p className="text-sm text-gray-500 mt-0.5">
-                    {disabled
-                      ? "Not running on this deployment right now -- pick another provider."
-                      : provider.description}
+                    {needsAuth(provider.id)
+                      ? "Sign in to use this provider."
+                      : isUnavailable(provider.id)
+                        ? "Not running on this deployment right now -- pick another provider."
+                        : provider.description}
                   </p>
                 </div>
                 <div className="text-right">
@@ -126,7 +134,11 @@ export function ProviderSelector({
                           : "bg-blue-100 text-blue-700"
                     }`}
                   >
-                    {disabled ? "Unavailable" : provider.pricing}
+                    {needsAuth(provider.id)
+                      ? "Sign in required"
+                      : isUnavailable(provider.id)
+                        ? "Unavailable"
+                        : provider.pricing}
                   </span>
                 </div>
               </div>

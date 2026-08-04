@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import async_session, get_db
-from src.api.middleware.dependencies import get_user_from_api_key_or_jwt
+from src.api.middleware.dependencies import get_optional_user
+from src.api.middleware.rate_limit import RateLimiter
 from src.api.models.api_key import APIKey
 from src.api.models.usage_log import UsageLog
 from src.api.models.user import User
@@ -17,6 +18,19 @@ from src.api.services.providers.base import ProviderError
 
 log = structlog.get_logger()
 router = APIRouter(tags=["translate"])
+
+ANON_MAX_REQUESTS = 20
+ANON_WINDOW_SECONDS = 3600
+
+
+def _client_ip(request: Request) -> str:
+    """Railway (and most PaaS) sit behind a proxy, so request.client.host is
+    the proxy's address -- read the real client IP from X-Forwarded-For when
+    present (first entry is the original client)."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 class TranslateRequest(BaseModel):
@@ -50,22 +64,44 @@ class LanguagesResponse(BaseModel):
 async def translate(
     req: TranslateRequest,
     request: Request,
-    auth: tuple[User, "APIKey | None"] = Depends(get_user_from_api_key_or_jwt),
+    auth: tuple[User | None, "APIKey | None"] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
 ) -> TranslateResponse:
     user, api_key = auth
+
+    # Anonymous requests get a tight, IP-limited MarianMT-only tier -- signing
+    # in unlocks the other providers and the higher per-account rate limit.
+    if user is None and req.provider != "marianmt":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sign in to use providers other than MarianMT",
+        )
+
     start = time.monotonic()
 
     # Rate limit check (skip if Redis unavailable)
-    rate_limiter = request.app.state.rate_limiter
-    if rate_limiter is not None:
-        rate_key = str(api_key.id) if api_key else str(user.id)
-        allowed, remaining = await rate_limiter.check(rate_key)
+    redis_client = request.app.state.redis
+    if user is not None:
+        rate_limiter = request.app.state.rate_limiter
+        if rate_limiter is not None:
+            rate_key = str(api_key.id) if api_key else str(user.id)
+            allowed, remaining = await rate_limiter.check(rate_key)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Rate limit exceeded",
+                    headers={"Retry-After": "60"},
+                )
+    elif redis_client is not None:
+        anon_limiter = RateLimiter(
+            redis_client, max_requests=ANON_MAX_REQUESTS, window_seconds=ANON_WINDOW_SECONDS
+        )
+        allowed, remaining = await anon_limiter.check(f"anon-translate:{_client_ip(request)}")
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Rate limit exceeded",
-                headers={"Retry-After": "60"},
+                detail="Free translation limit reached for this hour. Sign in for a higher limit.",
+                headers={"Retry-After": "3600"},
             )
 
     # Language detection
@@ -110,18 +146,19 @@ async def translate(
             latency_ms=round(elapsed, 1),
             provider=req.provider,
         )
-        asyncio.create_task(
-            _log_usage(
-                user.id,
-                api_key.id if api_key else None,
-                source_lang,
-                req.target_lang,
-                len(req.text),
-                True,
-                round(elapsed, 1),
-                req.provider,
+        if user is not None:
+            asyncio.create_task(
+                _log_usage(
+                    user.id,
+                    api_key.id if api_key else None,
+                    source_lang,
+                    req.target_lang,
+                    len(req.text),
+                    True,
+                    round(elapsed, 1),
+                    req.provider,
+                )
             )
-        )
         return response
 
     # Route through ProviderManager
@@ -140,8 +177,11 @@ async def translate(
 
     provider = resolved.provider
 
-    # Deduct credits only when the platform's admin key was used
+    # Deduct credits only when the platform's admin key was used. Only
+    # authenticated users can reach a non-marianmt provider (anonymous
+    # requests were rejected above), so user is guaranteed non-None here.
     if req.provider != "marianmt" and not resolved.used_own_key:
+        assert user is not None
         has_credits = await provider_manager.deduct_credits(
             user=user, db=db, provider_name=req.provider, char_count=len(req.text)
         )
@@ -172,19 +212,20 @@ async def translate(
 
     elapsed = (time.monotonic() - start) * 1000
 
-    # Log usage asynchronously
-    asyncio.create_task(
-        _log_usage(
-            user.id,
-            api_key.id if api_key else None,
-            source_lang,
-            req.target_lang,
-            len(req.text),
-            False,
-            round(elapsed, 1),
-            req.provider,
+    # Log usage asynchronously (anonymous requests have no user to attribute it to)
+    if user is not None:
+        asyncio.create_task(
+            _log_usage(
+                user.id,
+                api_key.id if api_key else None,
+                source_lang,
+                req.target_lang,
+                len(req.text),
+                False,
+                round(elapsed, 1),
+                req.provider,
+            )
         )
-    )
 
     return TranslateResponse(
         translated_text=translated_text,

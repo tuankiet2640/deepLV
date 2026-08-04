@@ -61,14 +61,10 @@ async def get_user_from_api_key(
     return user, api_key
 
 
-async def get_user_from_api_key_or_jwt(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-) -> tuple[User, APIKey | None]:
-    """Authenticate via API key OR JWT token.
-
-    Allows web UI users to translate without a separate API key.
-    """
+async def _resolve_api_key_or_jwt(
+    request: Request, db: AsyncSession
+) -> tuple[User, APIKey | None] | None:
+    """Shared credential resolution for the required and optional variants below."""
     # Try API key first
     api_key_header = request.headers.get("X-API-Key")
     if api_key_header and api_key_header != "demo":
@@ -89,7 +85,34 @@ async def get_user_from_api_key_or_jwt(
             if user:
                 return user, None
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid API key or token",
-    )
+    return None
+
+
+async def get_user_from_api_key_or_jwt(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> tuple[User, APIKey | None]:
+    """Authenticate via API key OR JWT token.
+
+    Allows web UI users to translate without a separate API key.
+    """
+    resolved = await _resolve_api_key_or_jwt(request, db)
+    if resolved is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key or token",
+        )
+    return resolved
+
+
+async def get_optional_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> tuple[User | None, APIKey | None]:
+    """Same credential resolution as get_user_from_api_key_or_jwt, but returns
+    (None, None) instead of raising when no valid credential is present --
+    for endpoints with an anonymous tier (e.g. /translate with MarianMT)."""
+    resolved = await _resolve_api_key_or_jwt(request, db)
+    if resolved is None:
+        return None, None
+    return resolved

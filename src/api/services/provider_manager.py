@@ -86,7 +86,7 @@ class ProviderManager:
     async def resolve(
         self,
         provider_name: str,
-        user: User,
+        user: User | None,
         db: AsyncSession,
         provider_key_id: str | None = None,
     ) -> ResolvedProvider:
@@ -94,7 +94,9 @@ class ProviderManager:
 
         Args:
             provider_name: The requested provider (marianmt, openai, etc.)
-            user: The authenticated user making the request.
+            user: The authenticated user making the request, or None for an
+                anonymous request. Only marianmt supports a None user -- every
+                other branch below requires a real account.
             db: Database session for looking up keys.
             provider_key_id: Optional specific user key to use. When omitted,
                 any key the user has stored for this provider is used instead
@@ -109,12 +111,16 @@ class ProviderManager:
         if provider_name not in SUPPORTED_PROVIDERS:
             raise ProviderError(provider_name, f"Unsupported provider: {provider_name}")
 
-        # MarianMT is always free and does not need an API key
+        # MarianMT is always free, local, and does not need an API key or a
+        # real user -- it's the only provider anonymous requests can use.
         if provider_name == "marianmt":
             return ResolvedProvider(
                 provider=MarianMTProvider(worker_url=self.settings.model_worker_url),
                 used_own_key=False,
             )
+
+        if user is None:
+            raise ProviderError(provider_name, "Sign in to use providers other than MarianMT")
 
         # An explicitly chosen BYOK key wins
         if provider_key_id:

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { TranslationPanel } from "../components/TranslationPanel";
 import { ProviderSelector } from "../components/ProviderSelector";
 import { useTranslation } from "../hooks/useTranslation";
@@ -8,12 +9,20 @@ import { useAuth } from "../contexts/AuthContext";
 import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
 
 export function TranslatePage() {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [sourceLang, setSourceLang] = useState(user?.default_source_lang ?? "auto");
   const [targetLang, setTargetLang] = useState(user?.default_target_lang ?? "de");
   const [sourceText, setSourceText] = useState("");
   const [provider, setProvider] = useState("marianmt");
   const marianmtAvailable = useModelWorkerStatus();
+
+  // Signed-out visitors get a limited MarianMT-only tier (see
+  // /api/v1/translate) -- fall back to it if a session ends mid-selection.
+  useEffect(() => {
+    if (!isAuthenticated && provider !== "marianmt") {
+      setProvider("marianmt");
+    }
+  }, [isAuthenticated, provider]);
 
   const { translatedText, isLoading, error, latencyMs, cached, detectedLang } = useTranslation(
     sourceText,
@@ -101,8 +110,19 @@ export function TranslatePage() {
             onChange={setProvider}
             compact
             marianmtAvailable={marianmtAvailable}
+            isAuthenticated={isAuthenticated}
           />
         </div>
+
+        {!isAuthenticated && (
+          <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-dlv-dark-bg/50 border-b border-dlv-border dark:border-dlv-dark-border">
+            Trying it out without an account: {"20 free MarianMT translations/hour. "}
+            <Link to="/register" className="text-dlv-accent font-medium hover:underline">
+              Sign up
+            </Link>{" "}
+            for other providers and a higher limit.
+          </div>
+        )}
 
         {isPivotPair && (
           <div className="px-4 py-2 text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border-b border-dlv-border dark:border-dlv-dark-border">
