@@ -20,6 +20,7 @@ import { GettingStartedPage } from "./pages/GettingStartedPage";
 import { ApiReferencePage } from "./pages/ApiReferencePage";
 import { StatusPage } from "./pages/StatusPage";
 import { ArchitecturePage } from "./pages/ArchitecturePage";
+import { AboutPage } from "./pages/AboutPage";
 import { AdminPage } from "./pages/AdminPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -68,6 +69,7 @@ export default function App() {
               <Route path="/getting-started" element={<GettingStartedPage />} />
               <Route path="/api-reference" element={<ApiReferencePage />} />
               <Route path="/architecture" element={<ArchitecturePage />} />
+              <Route path="/about" element={<AboutPage />} />
               <Route path="/status" element={<StatusPage />} />
               <Route
                 path="/admin"

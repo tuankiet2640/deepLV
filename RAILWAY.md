@@ -8,7 +8,9 @@ Get a live URL in 5 minutes.
 - Supabase for database (free tier)
 - Optional Redis (Railway add-on, free)
 - All API providers work (OpenAI, HuggingFace, Google via BYOK)
-- MarianMT unavailable (needs too much RAM) — use API providers instead
+- MarianMT works too, but needs a **separate worker service** (see
+  [Optional: Deploy the MarianMT Worker](#optional-deploy-the-marianmt-worker) below) —
+  the free tier's 512MB RAM is tight for it, and API providers are simpler to start with
 
 ## Steps
 
@@ -45,6 +47,12 @@ MODEL_WORKER_URL=http://localhost:8001
 ```
 
 > Replace `YOUR_APP` with your actual Railway domain after first deploy.
+>
+> `MODEL_WORKER_URL=http://localhost:8001` is a placeholder for when you're
+> **not** running the MarianMT worker — with no worker listening, MarianMT
+> requests fail cleanly (a translation error) rather than doing anything
+> silently wrong. If you do deploy the worker (see below), point this at
+> its Railway-internal URL instead.
 
 ### 5. Deploy
 
@@ -63,7 +71,9 @@ Your app is live!
 1. Visit your URL → Landing page should load
 2. Click **"Create Free Account"** → Register (first user = admin automatically)
 3. Log in → Go to API Keys → Create a key
-4. Try translating (MarianMT won't work — use OpenAI/HuggingFace/Google with BYOK)
+4. Try translating (with just `Dockerfile.railway` deployed, MarianMT has no
+   worker to talk to — use OpenAI/HuggingFace/Google with BYOK, or deploy the
+   worker per the section below)
 
 ## Adding Translation Providers
 
@@ -78,6 +88,40 @@ ADMIN_HUGGINGFACE_KEY=hf_...
 ADMIN_GOOGLE_KEY=AIza...
 ```
 
+## Optional: Deploy the MarianMT Worker
+
+The main service (`Dockerfile.railway`) is API + frontend only — it has
+nowhere to run MarianMT inference itself. To actually serve MarianMT
+translations, deploy the worker as a **second Railway service** in the same
+project:
+
+1. In your Railway project, click **"+ New"** → **"GitHub Repo"** → pick
+   `tuankiet2640/deepLV` again (a second service from the same repo).
+2. Under that service's **Settings** → **Build**, set the Dockerfile path to
+   `Dockerfile.railway-worker` (Railway won't auto-detect this one, since
+   `railway.toml` at the repo root points at the main API service).
+3. The worker's build step downloads and converts the model pairs listed in
+   `scripts/download_models.py` (currently `en<->{de,fr,es,zh,ja,vi}`) —
+   expect a slower first build than the main service.
+4. Once deployed, copy the worker service's **internal** Railway URL
+   (Settings → Networking) and set it as `MODEL_WORKER_URL` on the **main**
+   API service, then redeploy the main service to pick up the change.
+
+**RAM**: `Dockerfile.railway-worker` sets `MODEL_CACHE_SIZE=6`, meaning up to
+6 CTranslate2 models can be loaded (and held in memory) at once, on top of
+the base Python/PyTorch footprint. That's a real squeeze against Railway's
+free-tier 512MB — a paid plan with more RAM is the realistic path to running
+this reliably, not a hard requirement to try it.
+
+**Pivot quality**: the worker only has direct models for pairs involving
+English (`en<->de`, `en<->vi`, etc.). Any other pair (e.g. `vi->fr`) pivots
+through English as two chained translations, which measurably degrades
+quality on formal or technical text — the UI now warns about this when you
+pick MarianMT for such a pair. For anything you need to be accurate (a
+contract, HR paperwork, anything someone might sign), use an API provider
+for non-English-pair translations regardless of whether the worker is
+running.
+
 ## Costs
 
 | Service | Cost |
@@ -91,7 +135,9 @@ ADMIN_GOOGLE_KEY=AIza...
 
 - Railway: 512MB RAM, sleeps after 30 min inactive (cold starts take ~10s)
 - Supabase: Pauses after 7 days idle (just visit dashboard to unpause)
-- No MarianMT (needs 1-3GB RAM) — use API providers instead
+- MarianMT worker is a tight fit on 512MB with `MODEL_CACHE_SIZE=6` — a paid
+  plan is the realistic way to run it reliably; API providers are the easier
+  default on the free tier
 - Redis may not be available (app works without it, just no caching)
 
 ## Custom Domain
