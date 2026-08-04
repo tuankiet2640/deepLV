@@ -5,6 +5,7 @@ then chunks it for translation.
 """
 
 import io
+from collections.abc import Iterator
 
 import structlog
 
@@ -112,16 +113,30 @@ class DocumentParser:
     def _docx_paragraph_texts(self, file_bytes: bytes) -> list[str]:
         """Return the non-empty paragraph texts of a DOCX, in document order.
 
-        This exact filter (skip paragraphs whose text is blank) is also used by
-        ``build_translated_docx`` when walking the document to substitute
-        translated text back in, so the two must stay in lockstep: the Nth
-        entry returned here must always correspond to the Nth non-empty
-        paragraph encountered when re-walking ``doc.paragraphs``.
+        Includes body paragraphs followed by table cell paragraphs (tables
+        are walked table-by-table, row-by-row, cell-by-cell). This exact
+        order/filter is also used by ``build_translated_docx`` when walking
+        the document to substitute translated text back in, so the two must
+        stay in lockstep: the Nth entry returned here must always correspond
+        to the Nth non-empty paragraph encountered when re-walking the
+        document the same way.
         """
         from docx import Document
 
         doc = Document(io.BytesIO(file_bytes))
-        return [para.text for para in doc.paragraphs if para.text.strip()]
+        return list(self._iter_docx_paragraph_texts(doc))
+
+    def _iter_docx_paragraph_texts(self, doc: object) -> Iterator[str]:
+        """Yield non-empty paragraph texts: body paragraphs, then table cells."""
+        for para in doc.paragraphs:
+            if para.text.strip():
+                yield para.text
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        if para.text.strip():
+                            yield para.text
 
     def parse_paragraphs(self, file_bytes: bytes, filename: str) -> list[str]:
         """Parse a document into its constituent paragraphs (or pages, for PDF).
@@ -190,11 +205,11 @@ class DocumentParser:
     ) -> bytes:
         """Rebuild a DOCX with paragraph text replaced by its translation.
 
-        Reopens the original document and walks its paragraphs in the same
-        order/filter as ``_docx_paragraph_texts``, substituting each non-empty
-        paragraph's text with the corresponding translated entry. This keeps
-        the original styles, headers/footers, and non-text paragraphs intact;
-        only body paragraph text changes.
+        Reopens the original document and walks its paragraphs and table
+        cells in the same order/filter as ``_docx_paragraph_texts``,
+        substituting each non-empty paragraph's text with the corresponding
+        translated entry. This keeps the original styles, headers/footers,
+        and non-text paragraphs intact; only paragraph text changes.
 
         Args:
             original_file_bytes: The originally uploaded DOCX bytes.
@@ -208,12 +223,22 @@ class DocumentParser:
 
         doc = Document(io.BytesIO(original_file_bytes))
         index = 0
-        for para in doc.paragraphs:
+
+        def apply(para: object) -> None:
+            nonlocal index
             if not para.text.strip():
-                continue
+                return
             if index < len(translated_paragraphs):
                 self._set_paragraph_text(para, translated_paragraphs[index])
             index += 1
+
+        for para in doc.paragraphs:
+            apply(para)
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        apply(para)
 
         out = io.BytesIO()
         doc.save(out)
@@ -242,6 +267,11 @@ class DocumentParser:
         generates a fresh, readable PDF containing all translated text,
         flowed paragraph by paragraph rather than dumping it as a .txt file.
 
+        Uses an embedded Unicode font (DejaVu Sans) rather than reportlab's
+        default Helvetica: Helvetica is one of the 14 standard PDF fonts and
+        only covers WinAnsi/Latin-1, so text with Vietnamese (and other
+        non-Latin-1) characters would silently render as "tofu" boxes.
+
         Args:
             translated_paragraphs: Translated paragraph/page texts, in order.
 
@@ -251,9 +281,11 @@ class DocumentParser:
         from xml.sax.saxutils import escape
 
         from reportlab.lib.pagesizes import LETTER
-        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.styles import ParagraphStyle
         from reportlab.lib.units import inch
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+        self._register_unicode_font()
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
@@ -264,8 +296,7 @@ class DocumentParser:
             topMargin=inch,
             bottomMargin=inch,
         )
-        styles = getSampleStyleSheet()
-        body_style = styles["BodyText"]
+        body_style = ParagraphStyle("UnicodeBody", fontName="DejaVuSans", fontSize=10, leading=14)
 
         flowables = []
         for paragraph_text in translated_paragraphs:
@@ -277,6 +308,24 @@ class DocumentParser:
 
         doc.build(flowables)
         return buffer.getvalue()
+
+    _unicode_font_registered = False
+
+    def _register_unicode_font(self) -> None:
+        """Register the vendored DejaVu Sans font with reportlab, once."""
+        if DocumentParser._unicode_font_registered:
+            return
+
+        from pathlib import Path
+
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        fonts_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+        pdfmetrics.registerFont(TTFont("DejaVuSans", str(fonts_dir / "DejaVuSans.ttf")))
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", str(fonts_dir / "DejaVuSans-Bold.ttf")))
+        pdfmetrics.registerFontFamily("DejaVuSans", normal="DejaVuSans", bold="DejaVuSans-Bold")
+        DocumentParser._unicode_font_registered = True
 
     def chunk_text(self, text: str, max_chunk_size: int = MAX_CHUNK_SIZE) -> list[str]:
         """Split text into chunks suitable for translation.

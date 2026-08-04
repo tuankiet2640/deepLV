@@ -31,6 +31,19 @@ def _make_docx_bytes(paragraphs: list[tuple[str, bool]]) -> bytes:
     return buf.getvalue()
 
 
+def _make_docx_with_table(paragraph_text: str, table_rows: list[list[str]]) -> bytes:
+    """Build a DOCX with one top-level paragraph followed by a table."""
+    doc = Document()
+    doc.add_paragraph(paragraph_text)
+    table = doc.add_table(rows=len(table_rows), cols=len(table_rows[0]))
+    for r, row in enumerate(table_rows):
+        for c, text in enumerate(row):
+            table.cell(r, c).text = text
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
 class TestParseParagraphs:
     def test_docx_paragraphs_are_non_empty_and_in_order(self):
         original = _make_docx_bytes([("First", False), ("", False), ("Second", True)])
@@ -39,6 +52,23 @@ class TestParseParagraphs:
         paragraphs = parser.parse_paragraphs(original, "doc.docx")
 
         assert paragraphs == ["First", "Second"]
+
+    def test_docx_table_cells_are_included_after_body_paragraphs(self):
+        original = _make_docx_with_table(
+            "Intro paragraph",
+            [["Ten", "Nguyen Van A"], ["Chuc vu", "Ky su phan mem"]],
+        )
+        parser = DocumentParser()
+
+        paragraphs = parser.parse_paragraphs(original, "doc.docx")
+
+        assert paragraphs == [
+            "Intro paragraph",
+            "Ten",
+            "Nguyen Van A",
+            "Chuc vu",
+            "Ky su phan mem",
+        ]
 
     def test_txt_splits_on_blank_lines(self):
         parser = DocumentParser()
@@ -81,6 +111,30 @@ class TestBuildTranslatedDocx:
         doc = Document(io.BytesIO(rebuilt))
         assert [p.text for p in doc.paragraphs] == ["Translated"]
 
+    def test_table_cells_are_translated_not_left_in_original_language(self):
+        original = _make_docx_with_table(
+            "Intro paragraph",
+            [["Ten", "Nguyen Van A"], ["Chuc vu", "Ky su phan mem"]],
+        )
+        parser = DocumentParser()
+        translated = [
+            "Introduction",
+            "Name",
+            "Nguyen Van A (translated)",
+            "Position",
+            "Software Engineer",
+        ]
+
+        rebuilt = parser.build_translated_docx(original, translated)
+
+        doc = Document(io.BytesIO(rebuilt))
+        assert doc.paragraphs[0].text == "Introduction"
+        table = doc.tables[0]
+        assert table.cell(0, 0).text == "Name"
+        assert table.cell(0, 1).text == "Nguyen Van A (translated)"
+        assert table.cell(1, 0).text == "Position"
+        assert table.cell(1, 1).text == "Software Engineer"
+
 
 class TestBuildTranslatedPdf:
     def test_produces_valid_pdf_with_translated_text(self):
@@ -93,6 +147,21 @@ class TestBuildTranslatedPdf:
         extracted = reader.pages[0].extract_text()
         assert "Hello world." in extracted
         assert "Second paragraph & more." in extracted
+
+    def test_vietnamese_text_renders_without_tofu_boxes(self):
+        # Reportlab's default Helvetica only covers WinAnsi/Latin-1, so
+        # Vietnamese diacritics used to come out as "�"/"■" tofu
+        # boxes. build_translated_pdf must embed a Unicode-capable font.
+        parser = DocumentParser()
+        vietnamese_text = "NGUYỄN THỊ THU UYÊN - Đinh Ngọc Mai, Vũ Thanh Hằng"
+
+        pdf_bytes = parser.build_translated_pdf([vietnamese_text])
+
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        extracted = reader.pages[0].extract_text()
+        assert "�" not in extracted
+        assert "■" not in extracted
+        assert vietnamese_text in extracted
 
 
 @pytest.fixture
