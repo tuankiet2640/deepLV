@@ -17,8 +17,13 @@ export function GettingStartedPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
       <h1 className="text-3xl font-bold text-gray-900 mb-2">Getting Started</h1>
-      <p className="text-gray-500 mb-10">
+      <p className="text-gray-500 mb-4">
         Go from zero to translating text in under 5 minutes.
+      </p>
+      <p className="text-sm text-gray-500 bg-gray-50 border border-dlv-border rounded-lg px-4 py-3 mb-10">
+        Just want to try it? <Link to="/translate" className="text-dlv-accent font-medium hover:underline">Translate</Link>{" "}
+        works with MarianMT and no account at all &mdash; 20 requests/hour per IP. The steps below
+        are for the API, other providers, and higher limits.
       </p>
 
       {/* Step 1 */}
@@ -178,6 +183,7 @@ export function GettingStartedPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               <tr><td className="px-4 py-3">Requests per minute</td><td className="px-4 py-3">100 per API key</td></tr>
+              <tr><td className="px-4 py-3">Anonymous requests (MarianMT, no account)</td><td className="px-4 py-3">20 per hour, per IP</td></tr>
               <tr><td className="px-4 py-3">Max text length</td><td className="px-4 py-3">5,000 characters</td></tr>
               <tr><td className="px-4 py-3">API keys per account</td><td className="px-4 py-3">5</td></tr>
               <tr><td className="px-4 py-3">Token expiry</td><td className="px-4 py-3">24 hours</td></tr>

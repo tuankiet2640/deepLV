@@ -116,12 +116,19 @@ export function ApiReferencePage() {
       {/* Translation */}
       <h2 className="text-xl font-bold text-gray-900 mb-4 mt-8">Translation</h2>
 
-      <Endpoint method="POST" path="/api/v1/translate" auth="X-API-Key" desc="Translate text between supported language pairs.">
+      <Endpoint method="POST" path="/api/v1/translate" auth="X-API-Key / Bearer JWT / none" desc="Translate text between supported language pairs.">
+        <p className="text-xs text-gray-500">
+          <code className="bg-gray-100 px-1 py-0.5 rounded">provider: "marianmt"</code> works with no
+          credential at all -- anonymous requests are limited to 20/hour per IP. Every other{" "}
+          <code className="bg-gray-100 px-1 py-0.5 rounded">provider</code> value requires
+          <code className="bg-gray-100 px-1 py-0.5 rounded ml-1">X-API-Key</code> or a Bearer JWT.
+        </p>
         <ParamTable
           params={[
             { name: "text", type: "string", required: true, desc: "Input text (1-5000 chars)" },
             { name: "source_lang", type: "string", required: true, desc: 'ISO 639-1 code or "auto"' },
             { name: "target_lang", type: "string", required: true, desc: "ISO 639-1 code" },
+            { name: "provider", type: "string", required: false, desc: '"marianmt" (default), "openai", "huggingface", or "google"' },
           ]}
         />
         <ResponseExample
@@ -136,7 +143,11 @@ export function ApiReferencePage() {
 }`}
         />
         <div>
-          <p className="text-xs text-gray-400">Errors: 400 (bad input), 401 (invalid key), 413 (text too long), 429 (rate limited), 503 (worker down)</p>
+          <p className="text-xs text-gray-400">
+            Errors: 400 (bad input), 401 (invalid key, or a non-MarianMT provider with no
+            credential), 402 (insufficient credits), 413 (text too long), 429 (rate limited --
+            20/hour/IP anonymous, 100/min per account), 503 (worker down)
+          </p>
         </div>
       </Endpoint>
 
@@ -296,6 +307,13 @@ export function ApiReferencePage() {
               <td className="py-1.5 font-medium">API Key</td>
               <td className="py-1.5"><code className="bg-white px-1.5 py-0.5 rounded text-xs">X-API-Key: dlv_live_...</code></td>
               <td className="py-1.5">Translation requests</td>
+            </tr>
+            <tr>
+              <td className="py-1.5 font-medium">None</td>
+              <td className="py-1.5 text-gray-400">&mdash;</td>
+              <td className="py-1.5">
+                POST /translate with <code className="bg-white px-1.5 py-0.5 rounded text-xs">provider: "marianmt"</code> only, 20 req/hour per IP
+              </td>
             </tr>
           </tbody>
         </table>
