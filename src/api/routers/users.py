@@ -21,6 +21,7 @@ ALLOWED_THEMES = {"light", "dark", "system"}
 class UserProfileResponse(BaseModel):
     id: str
     email: str
+    role: str
     is_admin: bool
     is_verified: bool
     display_name: str | None
@@ -50,6 +51,7 @@ async def _build_profile_response(db: AsyncSession, user: User) -> UserProfileRe
     return UserProfileResponse(
         id=str(user.id),
         email=user.email,
+        role=user.role,
         is_admin=user.is_admin,
         is_verified=user.is_verified,
         display_name=user.display_name,

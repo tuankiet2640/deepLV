@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
-import { useAuth } from "../contexts/AuthContext";
+import { hasAdminAccess, useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 
 function ThemeToggle() {
@@ -71,7 +71,7 @@ export function Header() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const isAdmin = !!user?.is_admin;
+  const isAdmin = hasAdminAccess(user);
 
   // Close dropdown on click outside
   useEffect(() => {

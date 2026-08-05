@@ -1,18 +1,29 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../../contexts/AuthContext";
+
+type Role = "user" | "support" | "admin";
 
 interface UserSummary {
   id: string;
   email: string;
-  is_admin: boolean;
+  role: Role;
   credits_balance: number;
   created_at: string;
   usage_count: number;
   total_chars_translated: number;
 }
 
+const ROLE_STYLES: Record<Role, string> = {
+  admin: "bg-green-100 text-green-700",
+  support: "bg-blue-100 text-blue-700",
+  user: "bg-gray-100 text-gray-500",
+};
+
 const API_BASE = "/api/v1";
 
 export function UserTable() {
+  const { user: viewer } = useAuth();
+  const canEditRoles = viewer?.role === "admin";
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,7 +51,7 @@ export function UserTable() {
     fetchUsers();
   }, []);
 
-  const toggleAdmin = async (userId: string, currentStatus: boolean) => {
+  const updateRole = async (userId: string, role: Role) => {
     const token = localStorage.getItem("dlv_token");
     const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
       method: "PATCH",
@@ -48,14 +59,10 @@ export function UserTable() {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ is_admin: !currentStatus }),
+      body: JSON.stringify({ role }),
     });
     if (res.ok) {
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId ? { ...u, is_admin: !currentStatus } : u
-        )
-      );
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role } : u)));
     }
   };
 
@@ -96,7 +103,7 @@ export function UserTable() {
               <th className="px-4 py-3 font-medium text-gray-600">Credits</th>
               <th className="px-4 py-3 font-medium text-gray-600">Translations</th>
               <th className="px-4 py-3 font-medium text-gray-600">Characters</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Admin</th>
+              <th className="px-4 py-3 font-medium text-gray-600">Role</th>
               <th className="px-4 py-3 font-medium text-gray-600">Joined</th>
             </tr>
           </thead>
@@ -116,16 +123,18 @@ export function UserTable() {
                   {user.total_chars_translated.toLocaleString()}
                 </td>
                 <td className="px-4 py-3">
-                  <button
-                    onClick={() => toggleAdmin(user.id, user.is_admin)}
-                    className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                      user.is_admin
-                        ? "bg-green-100 text-green-700 hover:bg-green-200"
-                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  <select
+                    value={user.role}
+                    disabled={!canEditRoles}
+                    onChange={(e) => updateRole(user.id, e.target.value as Role)}
+                    className={`px-2 py-0.5 rounded text-xs font-medium border-0 ${ROLE_STYLES[user.role]} ${
+                      canEditRoles ? "cursor-pointer" : "cursor-default opacity-80"
                     }`}
                   >
-                    {user.is_admin ? "Admin" : "User"}
-                  </button>
+                    <option value="user">User</option>
+                    <option value="support">Support</option>
+                    <option value="admin">Admin</option>
+                  </select>
                 </td>
                 <td className="px-4 py-3 text-gray-500 text-xs">
                   {new Date(user.created_at).toLocaleDateString()}
