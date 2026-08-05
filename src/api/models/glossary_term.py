@@ -21,6 +21,8 @@ class GlossaryTerm(Base):
     source_term: Mapped[str] = mapped_column(String(200), nullable=False)
     target_term: Mapped[str] = mapped_column(String(200), nullable=False)
     case_sensitive: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

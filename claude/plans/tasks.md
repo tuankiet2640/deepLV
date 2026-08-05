@@ -138,3 +138,7 @@
 - [x] Full CRUD router (`/glossary`): create/list/patch/delete, ownership scoping, case-insensitive duplicate rejection (409), 500-term cap per account
 - [x] Frontend: "Glossary" tab in Settings, mirrors the Provider Keys tab pattern exactly
 - [x] `tests/test_glossary.py`: substitution/restoration unit tests (including the punctuation boundary cases), CRUD ownership/duplicate/cap tests, `/translate` integration test with a mocked provider, cache-sharing-safety test (two users, same raw input, different glossaries, each gets their own correct output)
+- [x] `category`/`notes` fields on `GlossaryTerm` (descriptive metadata only — not wired into translate-time filtering this round)
+- [x] `GET /glossary/export` (JSON + CSV, via stdlib `csv`, no new dependency) and `POST /glossary/import` (partial-success: bad rows skipped and reported per-row, not an all-or-nothing failure; existing 500-term cap enforced by truncating rather than rejecting)
+- [x] Frontend: Export JSON/CSV + Import buttons in the Glossary tab
+- [x] Verified end-to-end: a term (with category/notes) created under one account, exported, and imported into a *different* account — the app's answer to Legal/Marketing terminology sharing without building a team/organization concept

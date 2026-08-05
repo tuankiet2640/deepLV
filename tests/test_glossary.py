@@ -1,14 +1,29 @@
 """Glossary term substitution engine + CRUD + /translate integration tests."""
 
+import csv
+import io
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.api.database import async_session
-from src.api.services import glossary
+from src.api.services import glossary, otp
 from src.api.services.auth import get_user_by_email
 
 from .conftest import register_or_skip
+
+
+async def _register_verify_and_get_token(
+    client, email: str, password: str = "testpassword123"
+) -> str:
+    reg = await register_or_skip(client, email, password)
+    async with async_session() as db:
+        user = await get_user_by_email(db, email)
+        code = await otp.create_otp(db, user.id)
+    verify = await client.post("/api/v1/auth/verify-email", json={"email": email, "code": code})
+    assert verify.status_code == 200, reg
+    return verify.json()["access_token"]
 
 
 class _Term:
@@ -81,17 +96,7 @@ class TestSubstituteRestore:
 @pytest.mark.asyncio
 async def test_translate_applies_glossary_term(client):
     email = "glossary-translate@example.com"
-    await register_or_skip(client, email, "testpassword123")
-
-    async with async_session() as db:
-        user = await get_user_by_email(db, email)
-
-    from src.api.services import otp
-
-    async with async_session() as db:
-        code = await otp.create_otp(db, user.id)
-    verify = await client.post("/api/v1/auth/verify-email", json={"email": email, "code": code})
-    token = verify.json()["access_token"]
+    token = await _register_verify_and_get_token(client, email)
     headers = {"Authorization": f"Bearer {token}"}
 
     create_resp = await client.post(
@@ -147,20 +152,8 @@ async def test_cache_sharing_restores_per_user(client):
     get their own correctly restored output, even if the underlying cache
     entry (which only ever stores placeholder-templated text) is shared."""
     email_a, email_b = "glossary-user-a@example.com", "glossary-user-b@example.com"
-    await register_or_skip(client, email_a, "testpassword123")
-    await register_or_skip(client, email_b, "testpassword123")
-
-    from src.api.services import otp
-
-    async def _get_token(email: str) -> str:
-        async with async_session() as db:
-            user = await get_user_by_email(db, email)
-            code = await otp.create_otp(db, user.id)
-        verify = await client.post("/api/v1/auth/verify-email", json={"email": email, "code": code})
-        return verify.json()["access_token"]
-
-    token_a = await _get_token(email_a)
-    token_b = await _get_token(email_b)
+    token_a = await _register_verify_and_get_token(client, email_a)
+    token_b = await _register_verify_and_get_token(client, email_b)
 
     await client.post(
         "/api/v1/glossary",
@@ -205,20 +198,8 @@ async def test_cache_sharing_restores_per_user(client):
 @pytest.mark.asyncio
 async def test_glossary_crud_ownership_scoping(client):
     email_a, email_b = "glossary-owner-a@example.com", "glossary-owner-b@example.com"
-    await register_or_skip(client, email_a, "testpassword123")
-    await register_or_skip(client, email_b, "testpassword123")
-
-    from src.api.services import otp
-
-    async def _get_token(email: str) -> str:
-        async with async_session() as db:
-            user = await get_user_by_email(db, email)
-            code = await otp.create_otp(db, user.id)
-        verify = await client.post("/api/v1/auth/verify-email", json={"email": email, "code": code})
-        return verify.json()["access_token"]
-
-    token_a = await _get_token(email_a)
-    token_b = await _get_token(email_b)
+    token_a = await _register_verify_and_get_token(client, email_a)
+    token_b = await _register_verify_and_get_token(client, email_b)
     headers_a = {"Authorization": f"Bearer {token_a}"}
     headers_b = {"Authorization": f"Bearer {token_b}"}
 
@@ -260,15 +241,8 @@ async def test_glossary_crud_ownership_scoping(client):
 @pytest.mark.asyncio
 async def test_glossary_rejects_duplicate(client):
     email = "glossary-dup@example.com"
-    await register_or_skip(client, email, "testpassword123")
-
-    from src.api.services import otp
-
-    async with async_session() as db:
-        user = await get_user_by_email(db, email)
-        code = await otp.create_otp(db, user.id)
-    verify = await client.post("/api/v1/auth/verify-email", json={"email": email, "code": code})
-    headers = {"Authorization": f"Bearer {verify.json()['access_token']}"}
+    token = await _register_verify_and_get_token(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
 
     payload = {
         "source_lang": "en",
@@ -282,3 +256,261 @@ async def test_glossary_rejects_duplicate(client):
     dup_payload = {**payload, "source_term": "ACME"}  # case-insensitive dup
     dup = await client.post("/api/v1/glossary", headers=headers, json=dup_payload)
     assert dup.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_export_json_contains_created_terms(client):
+    email = "glossary-export-json@example.com"
+    token = await _register_verify_and_get_token(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    await client.post(
+        "/api/v1/glossary",
+        headers=headers,
+        json={
+            "source_lang": "en",
+            "target_lang": "de",
+            "source_term": "Acme Corp",
+            "target_term": "Acme Corporation GmbH",
+            "category": "legal",
+            "notes": "Official registered name",
+        },
+    )
+
+    resp = await client.get("/api/v1/glossary/export?format=json", headers=headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    rows = json.loads(resp.text)
+    assert len(rows) == 1
+    assert rows[0]["source_term"] == "Acme Corp"
+    assert rows[0]["target_term"] == "Acme Corporation GmbH"
+    assert rows[0]["category"] == "legal"
+    assert rows[0]["notes"] == "Official registered name"
+    assert "id" not in rows[0]
+
+
+@pytest.mark.asyncio
+async def test_export_csv_contains_created_terms(client):
+    email = "glossary-export-csv@example.com"
+    token = await _register_verify_and_get_token(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    await client.post(
+        "/api/v1/glossary",
+        headers=headers,
+        json={
+            "source_lang": "en",
+            "target_lang": "de",
+            "source_term": "Acme Corp",
+            "target_term": "Acme Corporation GmbH",
+        },
+    )
+
+    resp = await client.get("/api/v1/glossary/export?format=csv", headers=headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    rows = list(csv.DictReader(io.StringIO(resp.text)))
+    assert len(rows) == 1
+    assert rows[0]["source_term"] == "Acme Corp"
+    assert rows[0]["target_term"] == "Acme Corporation GmbH"
+
+
+@pytest.mark.asyncio
+async def test_import_json_across_users(client):
+    """Exporting one user's glossary and importing it into a different
+    user's account is the app's answer to team sharing (e.g. Legal sharing
+    terminology with Marketing) without a shared-account/org concept."""
+    email_a = "glossary-import-src@example.com"
+    email_b = "glossary-import-dst@example.com"
+    token_a = await _register_verify_and_get_token(client, email_a)
+    token_b = await _register_verify_and_get_token(client, email_b)
+
+    await client.post(
+        "/api/v1/glossary",
+        headers={"Authorization": f"Bearer {token_a}"},
+        json={
+            "source_lang": "en",
+            "target_lang": "de",
+            "source_term": "Acme Corp",
+            "target_term": "Acme Corporation GmbH",
+            "category": "legal",
+        },
+    )
+    export_resp = await client.get(
+        "/api/v1/glossary/export?format=json", headers={"Authorization": f"Bearer {token_a}"}
+    )
+
+    import_resp = await client.post(
+        "/api/v1/glossary/import",
+        headers={"Authorization": f"Bearer {token_b}"},
+        files={"file": ("glossary.json", export_resp.content, "application/json")},
+    )
+    assert import_resp.status_code == 200
+    result = import_resp.json()
+    assert result["created"] == 1
+    assert result["skipped_duplicate"] == 0
+    assert result["errors"] == []
+
+    list_resp = await client.get("/api/v1/glossary", headers={"Authorization": f"Bearer {token_b}"})
+    terms = list_resp.json()["terms"]
+    assert len(terms) == 1
+    assert terms[0]["source_term"] == "Acme Corp"
+    assert terms[0]["category"] == "legal"
+
+
+@pytest.mark.asyncio
+async def test_import_csv_round_trip(client):
+    email = "glossary-import-csv@example.com"
+    token = await _register_verify_and_get_token(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    csv_content = (
+        "source_lang,target_lang,source_term,target_term,case_sensitive,category,notes\n"
+        "en,de,Acme Corp,Acme Corporation GmbH,false,legal,official name\n"
+    )
+    resp = await client.post(
+        "/api/v1/glossary/import",
+        headers=headers,
+        files={"file": ("glossary.csv", csv_content.encode(), "text/csv")},
+    )
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["created"] == 1
+
+    list_resp = await client.get("/api/v1/glossary", headers=headers)
+    terms = list_resp.json()["terms"]
+    assert len(terms) == 1
+    assert terms[0]["source_term"] == "Acme Corp"
+    assert terms[0]["category"] == "legal"
+
+
+@pytest.mark.asyncio
+async def test_import_partial_success(client):
+    email = "glossary-import-partial@example.com"
+    token = await _register_verify_and_get_token(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Pre-existing term that the import file will also contain (duplicate).
+    await client.post(
+        "/api/v1/glossary",
+        headers=headers,
+        json={
+            "source_lang": "en",
+            "target_lang": "de",
+            "source_term": "Existing",
+            "target_term": "Vorhanden",
+        },
+    )
+
+    payload = json.dumps(
+        [
+            {
+                "source_lang": "en",
+                "target_lang": "de",
+                "source_term": "New Term",
+                "target_term": "Neuer Begriff",
+            },
+            {
+                "source_lang": "en",
+                "target_lang": "de",
+                "source_term": "Existing",
+                "target_term": "Should Be Skipped",
+            },
+            {
+                "source_lang": "xx",
+                "target_lang": "de",
+                "source_term": "Bad Lang",
+                "target_term": "Schlecht",
+            },
+            {
+                "source_lang": "en",
+                "target_lang": "de",
+                "source_term": "",
+                "target_term": "Empty source",
+            },
+        ]
+    )
+    resp = await client.post(
+        "/api/v1/glossary/import",
+        headers=headers,
+        files={"file": ("glossary.json", payload.encode(), "application/json")},
+    )
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["created"] == 1
+    assert result["skipped_duplicate"] == 1
+    assert len(result["errors"]) == 2
+
+    list_resp = await client.get("/api/v1/glossary", headers=headers)
+    terms = {t["source_term"] for t in list_resp.json()["terms"]}
+    assert terms == {"Existing", "New Term"}
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_unsupported_file_extension(client):
+    email = "glossary-import-badext@example.com"
+    token = await _register_verify_and_get_token(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = await client.post(
+        "/api/v1/glossary/import",
+        headers=headers,
+        files={"file": ("glossary.txt", b"whatever", "text/plain")},
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_import_enforces_per_user_cap(client):
+    email = "glossary-import-cap@example.com"
+    token = await _register_verify_and_get_token(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with async_session() as db:
+        user = await get_user_by_email(db, email)
+        near_cap = glossary.MAX_TERMS_PER_USER - 1
+        db.add_all(
+            [
+                glossary.GlossaryTerm(
+                    user_id=user.id,
+                    source_lang="en",
+                    target_lang="de",
+                    source_term=f"bulk-term-{i}",
+                    target_term=f"bulk-target-{i}",
+                )
+                for i in range(near_cap)
+            ]
+        )
+        await db.commit()
+
+    payload = json.dumps(
+        [
+            {
+                "source_lang": "en",
+                "target_lang": "de",
+                "source_term": "cap-1",
+                "target_term": "kappe-1",
+            },
+            {
+                "source_lang": "en",
+                "target_lang": "de",
+                "source_term": "cap-2",
+                "target_term": "kappe-2",
+            },
+            {
+                "source_lang": "en",
+                "target_lang": "de",
+                "source_term": "cap-3",
+                "target_term": "kappe-3",
+            },
+        ]
+    )
+    resp = await client.post(
+        "/api/v1/glossary/import",
+        headers=headers,
+        files={"file": ("glossary.json", payload.encode(), "application/json")},
+    )
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["created"] == 1
+    assert result["skipped_cap"] == 2
