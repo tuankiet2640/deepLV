@@ -22,7 +22,7 @@ export function ProviderKeyManager() {
   const fetchKeys = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("dlv_token");
       const res = await fetch(`${API_BASE}/admin/provider-keys`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -45,7 +45,7 @@ export function ProviderKeyManager() {
     if (!newApiKey.trim()) return;
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("dlv_token");
       const res = await fetch(`${API_BASE}/admin/provider-keys`, {
         method: "POST",
         headers: {
@@ -66,7 +66,7 @@ export function ProviderKeyManager() {
 
   const handleDelete = async (keyId: string) => {
     if (!confirm("Are you sure you want to delete this provider key?")) return;
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("dlv_token");
     const res = await fetch(`${API_BASE}/admin/provider-keys/${keyId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },

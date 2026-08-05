@@ -28,7 +28,7 @@ export function UsageChart() {
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("dlv_token");
         const res = await fetch(`${API_BASE}/admin/usage`, {
           headers: { Authorization: `Bearer ${token}` },
         });

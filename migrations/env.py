@@ -1,4 +1,5 @@
 import asyncio
+import ssl as ssl_module
 from logging.config import fileConfig
 
 from alembic import context
@@ -10,6 +11,15 @@ from src.shared.config import APISettings
 
 config = context.config
 settings = APISettings()
+
+# Must match src/api/database.py's connect_args: disable asyncpg prepared
+# statement caching for PgBouncer/Supabase pooler compatibility, and skip
+# hostname verification the same way the app engine does. A prior mismatch
+# here (this engine had no connect_args at all) is suspected to have
+# contributed to migrations silently failing against the Supabase pooler.
+_ssl_context = ssl_module.create_default_context()
+_ssl_context.check_hostname = False
+_ssl_context.verify_mode = ssl_module.CERT_NONE
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -38,6 +48,11 @@ async def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={
+            "prepared_statement_cache_size": 0,
+            "statement_cache_size": 0,
+            "ssl": _ssl_context,
+        },
     )
 
     async with connectable.connect() as connection:
