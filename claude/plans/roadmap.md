@@ -143,3 +143,56 @@ trying the product before creating an account
   linking to `/register` and falls back to MarianMT if a session ends
   mid-selection
 - Documented in the README, Getting Started, and API Reference pages
+
+## Milestone 10: Glossary / Custom Terminology — ✅ Shipped
+**Goal:** a real product differentiator (matches DeepL Pro's glossary
+feature) — force specific terms (product names, brand names) to always
+translate a certain way, per language pair, regardless of which of the 4
+providers is used
+
+- Provider-agnostic **text substitution**, not prompt injection (only
+  OpenAI accepts a system prompt; MarianMT/HuggingFace/Google don't):
+  matching source terms are replaced with a stable placeholder before the
+  provider call and restored to the user's target term after
+  (`src/api/services/glossary.py`)
+- Boundary matching uses explicit non-alphanumeric lookarounds, not `\b` —
+  `\b` was confirmed broken for terms starting/ending on punctuation
+  ("C++", "Acme Corp.", "AT&T" would silently never match)
+- The existing translation cache (global, no user_id in its key) stays
+  safe: substitution happens before the cache key is built, so a shared
+  cache entry only ever holds placeholder-templated text — each request
+  restores locally from its own stored terms, so one user's `target_term`
+  choice can never leak into another user's response
+- Applied uniformly to both `/translate` and document translation
+  (fetched once per job, not per paragraph)
+- New `GlossaryTerm` model/table, full CRUD (`/glossary`), 500-term cap
+  per account, duplicate rejection
+- Frontend: new "Glossary" tab in Settings, mirroring the existing
+  Provider Keys tab's list/add/delete pattern — no per-translation
+  selector needed, applied automatically
+- Explicitly out of scope: a Redis-backed lookup cache for glossary terms
+  (a single indexed query per request is cheap enough at this app's
+  scale), multiple named glossaries per user (DeepL's actual model — this
+  app uses one flat auto-applied list per language pair instead), and a
+  "glossary applied" indicator in the translate UI
+
+**Follow-up, same milestone: export/import + context metadata.** A user
+asked how a Legal-vs-Marketing scenario works — glossaries are per-user,
+so two *different* people already have independent glossaries with no
+conflict, but there was no way to *share* one without re-entering every
+term by hand, and no way to record *why* a term is translated a certain
+way. Rather than building team/organization accounts (a much bigger
+feature — no multi-user grouping exists anywhere in this app), the fix is
+decentralized:
+- `category` and `notes` fields on each term — descriptive only this
+  round, don't filter which terms apply at translate time
+- `GET /glossary/export?format=json|csv` and `POST /glossary/import` —
+  export a glossary to a file, import it into *anyone's* account (verified
+  end-to-end: a "Legal" account's term, with its category/notes, exported
+  and imported into a "Marketing" account's glossary)
+- Import is partial-success, never all-or-nothing: bad rows (invalid
+  language, empty term, duplicate) are skipped and reported per-row, valid
+  rows still get created; the existing 500-term cap is enforced by
+  truncating the import rather than rejecting it outright
+- Frontend: Export JSON/CSV buttons (blob-download) and an Import button
+  next to Add Term in the Glossary tab

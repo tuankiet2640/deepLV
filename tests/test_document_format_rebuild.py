@@ -403,6 +403,12 @@ def fake_db():
     db.commit = AsyncMock()
     db.added = []
     db.add = MagicMock(side_effect=lambda obj: db.added.append(obj))
+    # translate_document() now looks up glossary terms for the job's
+    # language pair -- no terms configured in these fixtures, so return an
+    # empty result.
+    execute_result = MagicMock()
+    execute_result.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(return_value=execute_result)
     return db
 
 

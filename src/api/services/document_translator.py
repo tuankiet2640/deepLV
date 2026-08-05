@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models.document_job import DocumentJob
 from src.api.models.document_result import DocumentResult
+from src.api.models.glossary_term import GlossaryTerm
 from src.api.models.user import User
+from src.api.services import glossary
 from src.api.services.document_parser import MAX_CHUNK_SIZE, DocumentParser
 from src.api.services.provider_manager import ProviderManager
 from src.api.services.providers.base import TranslationProvider
@@ -110,12 +112,21 @@ class DocumentTranslator:
                     await db.commit()
                     return
 
+            # Glossary terms are scoped to this job's language pair -- fetch
+            # once and reuse across every paragraph, rather than a per-
+            # paragraph query.
+            glossary_terms = await glossary.get_terms_for_pair(
+                db, user.id, job.source_lang, job.target_lang
+            )
+
             # Translate paragraph-by-paragraph (bounded concurrency) so
             # paragraph boundaries survive for format-preserving rebuild.
             semaphore = asyncio.Semaphore(MAX_CONCURRENT_TRANSLATIONS)
             translated_paragraphs = await asyncio.gather(
                 *(
-                    self._translate_paragraph(provider, job, index, paragraph, semaphore)
+                    self._translate_paragraph(
+                        provider, job, index, paragraph, semaphore, glossary_terms
+                    )
                     for index, paragraph in enumerate(paragraphs)
                 )
             )
@@ -187,34 +198,61 @@ class DocumentTranslator:
         index: int,
         paragraph: str,
         semaphore: asyncio.Semaphore,
+        glossary_terms: list[GlossaryTerm],
     ) -> str:
         """Translate a single paragraph, splitting it further if oversized.
 
         On failure, returns an inline error marker rather than raising, so one
         bad paragraph doesn't fail the whole document (matches prior chunk-level
         behavior).
+
+        Glossary terms are substituted with placeholders before each
+        provider call and restored after, same provider-agnostic technique
+        as /translate. A term that happens to straddle exactly across an
+        oversized-paragraph's sub-chunk split boundary won't be substituted
+        in either chunk -- an accepted, documented limitation rather than
+        something worth engineering around.
         """
         async with semaphore:
             try:
                 if len(paragraph) <= MAX_CHUNK_SIZE:
-                    return await provider.translate(
-                        text=paragraph,
+                    substituted = (
+                        glossary.substitute(paragraph, glossary_terms)
+                        if glossary_terms
+                        else paragraph
+                    )
+                    translated = await provider.translate(
+                        text=substituted,
                         source_lang=job.source_lang,
                         target_lang=job.target_lang,
+                    )
+                    return (
+                        glossary.restore(translated, glossary_terms)
+                        if glossary_terms
+                        else translated
                     )
 
                 # Paragraph too large for one call: split, translate the
                 # pieces, and rejoin so the caller still gets one string back
                 # per input paragraph (preserving the 1:1 index mapping).
                 sub_chunks = self.parser.chunk_text(paragraph)
-                translated_parts = [
-                    await provider.translate(
-                        text=sub_chunk,
+                translated_parts = []
+                for sub_chunk in sub_chunks:
+                    substituted_chunk = (
+                        glossary.substitute(sub_chunk, glossary_terms)
+                        if glossary_terms
+                        else sub_chunk
+                    )
+                    translated_chunk = await provider.translate(
+                        text=substituted_chunk,
                         source_lang=job.source_lang,
                         target_lang=job.target_lang,
                     )
-                    for sub_chunk in sub_chunks
-                ]
+                    translated_parts.append(
+                        glossary.restore(translated_chunk, glossary_terms)
+                        if glossary_terms
+                        else translated_chunk
+                    )
                 return " ".join(translated_parts)
             except Exception as err:
                 log.error(

@@ -20,6 +20,7 @@ from src.api.routers import (
     auth,
     credits,
     documents,
+    glossary,
     health,
     keys,
     providers,
@@ -178,6 +179,7 @@ app.include_router(credits.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
+app.include_router(glossary.router, prefix="/api/v1")
 
 
 # Metrics endpoint (outside /api/v1 — for Prometheus scraping)

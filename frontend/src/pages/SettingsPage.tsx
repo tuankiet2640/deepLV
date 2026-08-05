@@ -1,16 +1,36 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
 
 const API_BASE = "/api/v1";
 
-type Tab = "provider-keys" | "credits";
+type Tab = "provider-keys" | "credits" | "glossary";
 
 interface ProviderKey {
   id: string;
   provider: string;
   label: string;
   created_at: string;
+}
+
+interface GlossaryTerm {
+  id: string;
+  source_lang: string;
+  target_lang: string;
+  source_term: string;
+  target_term: string;
+  case_sensitive: boolean;
+  category: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+interface GlossaryImportResult {
+  created: number;
+  skipped_duplicate: number;
+  skipped_cap: number;
+  errors: { row: number; message: string }[];
 }
 
 interface CreditBalance {
@@ -203,6 +223,337 @@ function ProviderKeysTab() {
   );
 }
 
+function GlossaryTab() {
+  const getAuthHeaders = useAuthHeaders();
+  const { showToast } = useToast();
+  const [terms, setTerms] = useState<GlossaryTerm[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newSourceLang, setNewSourceLang] = useState("en");
+  const [newTargetLang, setNewTargetLang] = useState("de");
+  const [newSourceTerm, setNewSourceTerm] = useState("");
+  const [newTargetTerm, setNewTargetTerm] = useState("");
+  const [newCaseSensitive, setNewCaseSensitive] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+  const [newNotes, setNewNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchTerms = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/glossary`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setTerms(data.terms ?? data);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setLoading(false);
+    }
+  }, [getAuthHeaders]);
+
+  useEffect(() => {
+    fetchTerms();
+  }, [fetchTerms]);
+
+  const handleAdd = async () => {
+    if (!newSourceTerm.trim() || !newTargetTerm.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/glossary`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          source_lang: newSourceLang,
+          target_lang: newTargetLang,
+          source_term: newSourceTerm,
+          target_term: newTargetTerm,
+          case_sensitive: newCaseSensitive,
+          category: newCategory || null,
+          notes: newNotes || null,
+        }),
+      });
+      if (res.ok) {
+        setNewSourceTerm("");
+        setNewTargetTerm("");
+        setNewCaseSensitive(false);
+        setNewCategory("");
+        setNewNotes("");
+        setShowAddForm(false);
+        showToast("Glossary term saved successfully", "success");
+        await fetchTerms();
+      } else {
+        const body = await res.json().catch(() => ({ detail: "Failed to save glossary term" }));
+        showToast(body.detail ?? "Failed to save glossary term", "error");
+      }
+    } catch {
+      showToast("Failed to save glossary term", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await fetch(`${API_BASE}/glossary/${id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      showToast("Glossary term removed", "success");
+      await fetchTerms();
+    } catch {
+      showToast("Failed to remove term", "error");
+    }
+  };
+
+  const handleExport = async (format: "json" | "csv") => {
+    setExporting(true);
+    try {
+      const res = await fetch(`${API_BASE}/glossary/export?format=${format}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `glossary.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast("Failed to export glossary", "error");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const headers = getAuthHeaders();
+      delete headers["Content-Type"]; // let the browser set the multipart boundary
+      const res = await fetch(`${API_BASE}/glossary/import`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: "Import failed" }));
+        throw new Error(body.detail ?? "Import failed");
+      }
+      const result: GlossaryImportResult = await res.json();
+      const parts = [`${result.created} added`];
+      if (result.skipped_duplicate > 0) parts.push(`${result.skipped_duplicate} duplicate(s) skipped`);
+      if (result.skipped_cap > 0) parts.push(`${result.skipped_cap} skipped (glossary limit reached)`);
+      if (result.errors.length > 0) parts.push(`${result.errors.length} row(s) had errors`);
+      showToast(parts.join(", "), result.created > 0 ? "success" : "error");
+      await fetchTerms();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Import failed", "error");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center text-gray-500 dark:text-gray-400 py-8">Loading...</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-medium text-gray-900 dark:text-gray-100">Glossary</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Force specific terms to always translate a certain way, per language pair. Applied
+            automatically -- no need to pick a glossary when translating.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,.csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImportFile(file);
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="px-3 py-1.5 border border-dlv-border dark:border-dlv-dark-border text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
+          >
+            {importing ? "Importing..." : "Import"}
+          </button>
+          <button
+            onClick={() => handleExport("json")}
+            disabled={exporting || terms.length === 0}
+            className="px-3 py-1.5 border border-dlv-border dark:border-dlv-dark-border text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
+          >
+            Export JSON
+          </button>
+          <button
+            onClick={() => handleExport("csv")}
+            disabled={exporting || terms.length === 0}
+            className="px-3 py-1.5 border border-dlv-border dark:border-dlv-dark-border text-gray-700 dark:text-gray-200 text-sm font-medium rounded-md hover:bg-gray-50 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
+          >
+            Export CSV
+          </button>
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="px-3 py-1.5 bg-dlv-accent text-white text-sm font-medium rounded-md hover:bg-dlv-accent/90 transition-colors"
+          >
+            {showAddForm ? "Cancel" : "Add Term"}
+          </button>
+        </div>
+      </div>
+
+      {showAddForm && (
+        <div className="border border-dlv-border dark:border-dlv-dark-border rounded-lg p-4 bg-gray-50 dark:bg-dlv-dark-bg space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source language</label>
+              <select
+                value={newSourceLang}
+                onChange={(e) => setNewSourceLang(e.target.value)}
+                className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-200"
+              >
+                {LANGUAGES.filter((l) => l.code !== "auto").map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target language</label>
+              <select
+                value={newTargetLang}
+                onChange={(e) => setNewTargetLang(e.target.value)}
+                className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-200"
+              >
+                {TARGET_LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Source term</label>
+            <input
+              type="text"
+              value={newSourceTerm}
+              onChange={(e) => setNewSourceTerm(e.target.value)}
+              placeholder="Acme Corp"
+              className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-100"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Always translate as</label>
+            <input
+              type="text"
+              value={newTargetTerm}
+              onChange={(e) => setNewTargetTerm(e.target.value)}
+              placeholder="Acme Corp"
+              className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-100"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category (optional)</label>
+              <input
+                type="text"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                placeholder="legal, marketing, ..."
+                className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes (optional)</label>
+              <input
+                type="text"
+                value={newNotes}
+                onChange={(e) => setNewNotes(e.target.value)}
+                placeholder="Why this translation?"
+                className="w-full border border-dlv-border dark:border-dlv-dark-border rounded-md px-3 py-2 text-sm bg-white dark:bg-dlv-dark-card dark:text-gray-100"
+              />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={newCaseSensitive}
+              onChange={(e) => setNewCaseSensitive(e.target.checked)}
+            />
+            Case-sensitive match
+          </label>
+          <button
+            onClick={handleAdd}
+            disabled={!newSourceTerm.trim() || !newTargetTerm.trim() || saving}
+            className="px-4 py-2 bg-dlv-accent text-white text-sm font-medium rounded-md hover:bg-dlv-accent/90 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving..." : "Save Term"}
+          </button>
+        </div>
+      )}
+
+      {terms.length === 0 ? (
+        <p className="text-sm text-gray-400 py-4 text-center">No glossary terms yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {terms.map((term) => (
+            <div
+              key={term.id}
+              className="flex items-center justify-between border border-dlv-border dark:border-dlv-dark-border rounded-lg px-4 py-3 bg-white dark:bg-dlv-dark-bg"
+            >
+              <div>
+                <span className="font-medium text-gray-900 dark:text-gray-100">
+                  {term.source_term} &rarr; {term.target_term}
+                </span>
+                <span className="ml-2 text-xs bg-gray-100 dark:bg-dlv-dark-border text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded uppercase">
+                  {term.source_lang} &rarr; {term.target_lang}
+                </span>
+                {term.case_sensitive && (
+                  <span className="ml-2 text-xs bg-gray-100 dark:bg-dlv-dark-border text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded">
+                    Case-sensitive
+                  </span>
+                )}
+                {term.category && (
+                  <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">
+                    {term.category}
+                  </span>
+                )}
+                {term.notes && (
+                  <p className="text-xs text-gray-400 mt-0.5">{term.notes}</p>
+                )}
+              </div>
+              <button
+                onClick={() => handleDelete(term.id)}
+                className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CreditsTab() {
   const getAuthHeaders = useAuthHeaders();
   const [balance, setBalance] = useState<CreditBalance | null>(null);
@@ -324,6 +675,7 @@ export function SettingsPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "provider-keys", label: "Provider Keys" },
+    { id: "glossary", label: "Glossary" },
     { id: "credits", label: "Credits" },
   ];
 
@@ -359,6 +711,7 @@ export function SettingsPage() {
         {/* Tab content */}
         <div className="p-6">
           {activeTab === "provider-keys" && <ProviderKeysTab />}
+          {activeTab === "glossary" && <GlossaryTab />}
           {activeTab === "credits" && <CreditsTab />}
         </div>
       </div>
