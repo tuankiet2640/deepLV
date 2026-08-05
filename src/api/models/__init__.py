@@ -15,6 +15,7 @@ from src.api.models.credit_transaction import CreditTransaction  # noqa: E402, F
 from src.api.models.document_job import DocumentJob  # noqa: E402, F401
 from src.api.models.document_result import DocumentResult  # noqa: E402, F401
 from src.api.models.email_otp import EmailOTP  # noqa: E402, F401
+from src.api.models.glossary_term import GlossaryTerm  # noqa: E402, F401
 from src.api.models.password_reset import PasswordResetToken  # noqa: E402, F401
 from src.api.models.provider_key import ProviderKey  # noqa: E402, F401
 from src.api.models.usage_log import UsageLog  # noqa: E402, F401

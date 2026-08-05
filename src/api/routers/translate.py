@@ -10,8 +10,10 @@ from src.api.database import async_session, get_db
 from src.api.middleware.dependencies import get_optional_user
 from src.api.middleware.rate_limit import RateLimiter
 from src.api.models.api_key import APIKey
+from src.api.models.glossary_term import GlossaryTerm
 from src.api.models.usage_log import UsageLog
 from src.api.models.user import User
+from src.api.services import glossary
 from src.api.services.language_detect import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, detect_language
 from src.api.services.provider_manager import ProviderManager
 from src.api.services.providers.base import ProviderError
@@ -130,15 +132,31 @@ async def translate(
             provider=req.provider,
         )
 
+    # Glossary: substitute matching terms with placeholders before caching
+    # or translating (see src/api/services/glossary.py for why the cache
+    # key can safely use the substituted text unchanged). Anonymous users
+    # have no glossary, so substituted_text == req.text for them.
+    glossary_terms: list[GlossaryTerm] = []
+    if user is not None:
+        glossary_terms = await glossary.get_terms_for_pair(
+            db, user.id, source_lang, req.target_lang
+        )
+    substituted_text = glossary.substitute(req.text, glossary_terms) if glossary_terms else req.text
+
     # Cache check
     cache = request.app.state.translation_cache
     cached_result = None
     if cache is not None:
-        cached_result = await cache.get(source_lang, req.target_lang, req.text)
+        cached_result = await cache.get(source_lang, req.target_lang, substituted_text)
     if cached_result:
         elapsed = (time.monotonic() - start) * 1000
+        final_text = (
+            glossary.restore(cached_result["translated_text"], glossary_terms)
+            if glossary_terms
+            else cached_result["translated_text"]
+        )
         response = TranslateResponse(
-            translated_text=cached_result["translated_text"],
+            translated_text=final_text,
             source_lang=source_lang,
             target_lang=req.target_lang,
             detected_lang=detected,
@@ -193,22 +211,29 @@ async def translate(
 
     # Translate using the resolved provider
     try:
-        translated_text = await provider.translate(req.text, source_lang, req.target_lang)
+        translated_text = await provider.translate(substituted_text, source_lang, req.target_lang)
     except ProviderError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    # Cache the result
+    # Cache the placeholder-templated output (never the final per-user
+    # restored text) keyed on the substituted text, so a shared cache entry
+    # can never leak one user's target_term to another -- each request
+    # restores locally from its own glossary terms below.
     if cache is not None:
         await cache.set(
             source_lang,
             req.target_lang,
-            req.text,
+            substituted_text,
             {
                 "translated_text": translated_text,
                 "source_lang": source_lang,
                 "target_lang": req.target_lang,
             },
         )
+
+    final_text = (
+        glossary.restore(translated_text, glossary_terms) if glossary_terms else translated_text
+    )
 
     elapsed = (time.monotonic() - start) * 1000
 
@@ -228,7 +253,7 @@ async def translate(
         )
 
     return TranslateResponse(
-        translated_text=translated_text,
+        translated_text=final_text,
         source_lang=source_lang,
         target_lang=req.target_lang,
         detected_lang=detected,

@@ -48,3 +48,4 @@ class User(Base):
     api_keys = relationship("APIKey", back_populates="user", lazy="selectin")
     provider_keys = relationship("ProviderKey", back_populates="user", lazy="selectin")
     credit_transactions = relationship("CreditTransaction", back_populates="user", lazy="selectin")
+    glossary_terms = relationship("GlossaryTerm", back_populates="user", lazy="selectin")

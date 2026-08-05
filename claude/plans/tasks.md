@@ -128,3 +128,13 @@
 - [x] Frontend: `ProviderSelector` "sign in required" badges, `TranslatePage` anon-tier banner + MarianMT fallback on session end
 - [x] `tests/test_anonymous_translate.py` + updated `test_api.py`
 - [x] README, Getting Started, and API Reference docs updated
+
+## Milestone 10: Glossary / Custom Terminology
+
+- [x] `GlossaryTerm` model + migration (indexed on `user_id, source_lang, target_lang`)
+- [x] `src/api/services/glossary.py`: `substitute()`/`restore()` via stable-hash placeholders, longest-term-first, non-alphanumeric lookaround boundaries (not `\b` — confirmed broken for "C++"/"Acme Corp."/"AT&T"-style terms), `get_terms_for_pair()`
+- [x] `/translate` integration: substitute before cache lookup/provider call, restore after either a cache hit or fresh call; cache stores placeholder-templated text only, never a resolved `target_term` — verified safe against the existing global (no-user_id) cache
+- [x] Document translation integration: terms fetched once per job, both `_translate_paragraph` call sites (normal + oversized-chunk-split paths) wrapped
+- [x] Full CRUD router (`/glossary`): create/list/patch/delete, ownership scoping, case-insensitive duplicate rejection (409), 500-term cap per account
+- [x] Frontend: "Glossary" tab in Settings, mirrors the Provider Keys tab pattern exactly
+- [x] `tests/test_glossary.py`: substitution/restoration unit tests (including the punctuation boundary cases), CRUD ownership/duplicate/cap tests, `/translate` integration test with a mocked provider, cache-sharing-safety test (two users, same raw input, different glossaries, each gets their own correct output)

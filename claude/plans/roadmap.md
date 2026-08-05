@@ -143,3 +143,35 @@ trying the product before creating an account
   linking to `/register` and falls back to MarianMT if a session ends
   mid-selection
 - Documented in the README, Getting Started, and API Reference pages
+
+## Milestone 10: Glossary / Custom Terminology — ✅ Shipped
+**Goal:** a real product differentiator (matches DeepL Pro's glossary
+feature) — force specific terms (product names, brand names) to always
+translate a certain way, per language pair, regardless of which of the 4
+providers is used
+
+- Provider-agnostic **text substitution**, not prompt injection (only
+  OpenAI accepts a system prompt; MarianMT/HuggingFace/Google don't):
+  matching source terms are replaced with a stable placeholder before the
+  provider call and restored to the user's target term after
+  (`src/api/services/glossary.py`)
+- Boundary matching uses explicit non-alphanumeric lookarounds, not `\b` —
+  `\b` was confirmed broken for terms starting/ending on punctuation
+  ("C++", "Acme Corp.", "AT&T" would silently never match)
+- The existing translation cache (global, no user_id in its key) stays
+  safe: substitution happens before the cache key is built, so a shared
+  cache entry only ever holds placeholder-templated text — each request
+  restores locally from its own stored terms, so one user's `target_term`
+  choice can never leak into another user's response
+- Applied uniformly to both `/translate` and document translation
+  (fetched once per job, not per paragraph)
+- New `GlossaryTerm` model/table, full CRUD (`/glossary`), 500-term cap
+  per account, duplicate rejection
+- Frontend: new "Glossary" tab in Settings, mirroring the existing
+  Provider Keys tab's list/add/delete pattern — no per-translation
+  selector needed, applied automatically
+- Explicitly out of scope: a Redis-backed lookup cache for glossary terms
+  (a single indexed query per request is cheap enough at this app's
+  scale), multiple named glossaries per user (DeepL's actual model — this
+  app uses one flat auto-applied list per language pair instead), and a
+  "glossary applied" indicator in the translate UI
