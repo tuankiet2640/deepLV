@@ -77,8 +77,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 None, command.upgrade, alembic_cfg, "head"
             )
             log.info("database_migrations_applied")
-        except Exception as e:
+        except BaseException as e:
+            # BaseException (not Exception): a startup-deadline cancellation
+            # (asyncio.CancelledError, a BaseException subclass since Python
+            # 3.8) must still be logged here rather than silently propagating
+            # past this block — that's exactly what let a prior migration
+            # failure go completely unlogged in production.
             log.error("database_migration_failed", error=str(e))
+            print(f"database_migration_failed: {e!r}", flush=True)
 
     # Sweep orphaned document jobs stuck in "processing" state
     if db_ready:
