@@ -37,7 +37,7 @@ export function SettingsPanel() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("dlv_token");
         const res = await fetch(`${API_BASE}/admin/settings`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -63,7 +63,7 @@ export function SettingsPanel() {
     setError(null);
     setSuccess(false);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("dlv_token");
       const res = await fetch(`${API_BASE}/admin/settings`, {
         method: "PATCH",
         headers: {

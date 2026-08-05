@@ -21,7 +21,7 @@ export function UserTable() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("dlv_token");
       const res = await fetch(`${API_BASE}/admin/users`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -41,7 +41,7 @@ export function UserTable() {
   }, []);
 
   const toggleAdmin = async (userId: string, currentStatus: boolean) => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("dlv_token");
     const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
       method: "PATCH",
       headers: {
