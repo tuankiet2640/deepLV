@@ -516,8 +516,10 @@ async def get_settings(
     result = await db.execute(select(AdminSetting))
     stored = {s.key: s.value for s in result.scalars().all()}
 
-    # Merge with defaults
-    all_settings = {**DEFAULT_SETTINGS, **stored}
+    # Keyed off DEFAULT_SETTINGS (not `stored`) so a setting removed from the
+    # defaults (e.g. a retired one) disappears from the API even if an old
+    # row for it still lingers in the table.
+    all_settings = {k: stored.get(k, v) for k, v in DEFAULT_SETTINGS.items()}
     return SettingsResponse(
         settings=[SettingResponse(key=k, value=v) for k, v in all_settings.items()]
     )
@@ -532,10 +534,11 @@ async def update_settings(
     """Update admin settings (credit pricing, limits, etc.)."""
     # Settings that must have valid numeric values
     numeric_settings = {
-        "credit_cost_per_1k_chars",
+        "credit_cost_per_1k_chars_openai",
+        "credit_cost_per_1k_chars_huggingface",
+        "credit_cost_per_1k_chars_google",
         "max_document_size_mb",
         "max_translation_chars",
-        "free_tier_daily_chars",
     }
 
     changes: dict = {}
@@ -588,7 +591,7 @@ async def update_settings(
     # Return updated settings
     result = await db.execute(select(AdminSetting))
     stored = {s.key: s.value for s in result.scalars().all()}
-    all_settings = {**DEFAULT_SETTINGS, **stored}
+    all_settings = {k: stored.get(k, v) for k, v in DEFAULT_SETTINGS.items()}
     return SettingsResponse(
         settings=[SettingResponse(key=k, value=v) for k, v in all_settings.items()]
     )

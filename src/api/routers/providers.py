@@ -15,7 +15,7 @@ from src.api.middleware.dependencies import get_current_user
 from src.api.models.provider_key import ProviderKey
 from src.api.models.user import User
 from src.api.services.encryption import encrypt_api_key
-from src.api.services.provider_manager import PROVIDER_INFO, SUPPORTED_PROVIDERS
+from src.api.services.provider_manager import PROVIDER_INFO, SUPPORTED_PROVIDERS, get_provider_rate
 
 log = structlog.get_logger()
 router = APIRouter(prefix="/providers", tags=["providers"])
@@ -43,7 +43,7 @@ class ProviderInfoResponse(BaseModel):
     display_name: str
     description: str
     requires_key: bool
-    credit_cost_per_1k_chars: int
+    credit_cost_per_1k_chars: float
 
 
 class ProvidersListResponse(BaseModel):
@@ -51,9 +51,25 @@ class ProvidersListResponse(BaseModel):
 
 
 @router.get("", response_model=ProvidersListResponse)
-async def list_providers() -> ProvidersListResponse:
-    """List all available translation providers with pricing info."""
-    return ProvidersListResponse(providers=[ProviderInfoResponse(**info) for info in PROVIDER_INFO])
+async def list_providers(db: AsyncSession = Depends(get_db)) -> ProvidersListResponse:
+    """List all available translation providers with live pricing info.
+
+    Rates come from get_provider_rate -- the same source deduct_credits
+    reads from -- so what's shown here always matches what's charged.
+    """
+    providers = []
+    for info in PROVIDER_INFO:
+        rate = await get_provider_rate(db, info["name"])
+        providers.append(
+            ProviderInfoResponse(
+                name=info["name"],
+                display_name=info["display_name"],
+                description=info["description"],
+                requires_key=info["requires_key"],
+                credit_cost_per_1k_chars=rate,
+            )
+        )
+    return ProvidersListResponse(providers=providers)
 
 
 @router.post("/keys", response_model=ProviderKeyResponse, status_code=status.HTTP_201_CREATED)

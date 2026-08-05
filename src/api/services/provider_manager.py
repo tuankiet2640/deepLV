@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models.admin_provider_key import AdminProviderKey
+from src.api.models.admin_settings import AdminSetting
 from src.api.models.credit_transaction import CreditTransaction
 from src.api.models.provider_key import ProviderKey
 from src.api.models.user import User
@@ -56,6 +57,32 @@ PROVIDER_INFO = [
         "credit_cost_per_1k_chars": 3,
     },
 ]
+
+
+async def get_provider_rate(db: AsyncSession, provider_name: str) -> float:
+    """Look up the live credit rate (credits per 1k chars) for a provider.
+
+    Reads the admin-configurable override from AdminSetting first (the
+    Settings tab writes here), falling back to PROVIDER_INFO's default so
+    pricing works before an admin ever visits the Settings tab. This is the
+    single source of truth for both what /providers displays and what
+    deduct_credits actually charges -- they must never diverge.
+    """
+    if provider_name == "marianmt":
+        return 0.0
+
+    result = await db.execute(
+        select(AdminSetting).where(AdminSetting.key == f"credit_cost_per_1k_chars_{provider_name}")
+    )
+    setting = result.scalar_one_or_none()
+    if setting is not None:
+        return float(setting.value)
+
+    default = next(
+        (p["credit_cost_per_1k_chars"] for p in PROVIDER_INFO if p["name"] == provider_name),
+        0.0,
+    )
+    return float(default)
 
 
 @dataclass
@@ -246,21 +273,23 @@ class ProviderManager:
         db: AsyncSession,
         provider_name: str,
         char_count: int,
-    ) -> bool:
-        """Deduct credits from user for using admin key.
+        source_lang: str | None = None,
+        target_lang: str | None = None,
+    ) -> float | None:
+        """Deduct credits from user for using admin key, at that provider's rate.
 
         Uses an atomic database UPDATE with a WHERE clause to prevent
         race conditions where concurrent requests could overdraw the balance.
 
-        Returns True if credits were deducted, False if insufficient.
+        Returns the amount charged, or None if the balance was insufficient.
         """
         from sqlalchemy import update
 
         # MarianMT is free
         if provider_name == "marianmt":
-            return True
+            return 0.0
 
-        cost_per_1k = self.settings.credit_cost_per_1k_chars
+        cost_per_1k = await get_provider_rate(db, provider_name)
         cost = (char_count / 1000) * cost_per_1k
 
         # Atomic update: only deduct if balance is sufficient
@@ -271,7 +300,7 @@ class ProviderManager:
         )
 
         if result.rowcount == 0:
-            return False
+            return None
 
         # Refresh user object to reflect new balance
         await db.refresh(user)
@@ -281,6 +310,11 @@ class ProviderManager:
             amount=-cost,
             transaction_type="debit",
             description=f"Translation via {provider_name} ({char_count} chars)",
+            provider=provider_name,
+            char_count=char_count,
+            rate_applied=cost_per_1k,
+            source_lang=source_lang,
+            target_lang=target_lang,
         )
         db.add(transaction)
         await db.flush()
@@ -292,7 +326,49 @@ class ProviderManager:
             cost=cost,
             remaining=user.credits_balance,
         )
-        return True
+        return cost
+
+    async def refund_credits(
+        self,
+        user: User,
+        db: AsyncSession,
+        amount: float,
+        provider_name: str,
+        reason: str,
+    ) -> None:
+        """Refund previously-deducted credits, e.g. a document job that
+        reserved credits up front and then failed before completing.
+
+        Unlike deduct_credits, a refund can never overdraw, so no balance
+        check is needed.
+        """
+        from sqlalchemy import update
+
+        await db.execute(
+            update(User)
+            .where(User.id == user.id)
+            .values(credits_balance=User.credits_balance + amount)
+        )
+        await db.refresh(user)
+
+        db.add(
+            CreditTransaction(
+                user_id=user.id,
+                amount=amount,
+                transaction_type="refund",
+                description=f"Refund: {reason}",
+                provider=provider_name,
+            )
+        )
+        await db.flush()
+
+        log.info(
+            "credits_refunded",
+            user_id=str(user.id),
+            provider=provider_name,
+            amount=amount,
+            remaining=user.credits_balance,
+        )
 
     def _create_provider(self, provider_name: str, api_key: str) -> TranslationProvider:
         """Create a provider instance with the given API key."""

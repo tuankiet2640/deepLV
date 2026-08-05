@@ -38,6 +38,11 @@ class TransactionResponse(BaseModel):
     amount: float
     transaction_type: str
     description: str
+    provider: str | None
+    char_count: int | None
+    rate_applied: float | None
+    source_lang: str | None
+    target_lang: str | None
     created_at: str
 
 
@@ -141,6 +146,11 @@ async def get_transactions(
                 amount=t.amount,
                 transaction_type=t.transaction_type,
                 description=t.description,
+                provider=t.provider,
+                char_count=t.char_count,
+                rate_applied=t.rate_applied,
+                source_lang=t.source_lang,
+                target_lang=t.target_lang,
                 created_at=t.created_at.isoformat(),
             )
             for t in transactions
