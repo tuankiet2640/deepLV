@@ -142,6 +142,15 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)) -> LoginR
             },
         )
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "account_deactivated",
+                "message": "This account has been deactivated. Contact an administrator.",
+            },
+        )
+
     user.last_login_at = datetime.now(UTC)
     await db.commit()
 

@@ -4,11 +4,11 @@ Provides endpoints for admin users to manage users, view usage analytics,
 manage admin provider keys, and update system settings.
 """
 
-from datetime import UTC
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +36,9 @@ class UserSummary(BaseModel):
     role: str
     is_admin: bool
     is_verified: bool
+    is_active: bool
+    deactivated_at: str | None
+    deactivation_reason: str | None
     display_name: str | None
     credits_balance: float
     created_at: str
@@ -54,6 +57,9 @@ class UserDetailResponse(BaseModel):
     role: str
     is_admin: bool
     is_verified: bool
+    is_active: bool
+    deactivated_at: str | None
+    deactivation_reason: str | None
     display_name: str | None
     credits_balance: float
     created_at: str
@@ -74,6 +80,18 @@ class UpdateUserResponse(BaseModel):
     role: str
     is_admin: bool
     credits_balance: float
+
+
+class DeactivateUserRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class UserStatusResponse(BaseModel):
+    id: str
+    email: str
+    is_active: bool
+    deactivated_at: str | None
+    deactivation_reason: str | None
 
 
 class UsageAnalyticsResponse(BaseModel):
@@ -140,10 +158,19 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    status_filter: str = Query("all", alias="status", pattern="^(all|active|inactive)$"),
 ) -> UsersListResponse:
-    """List all users with usage statistics."""
-    # Get total user count
-    count_result = await db.execute(select(func.count()).select_from(User))
+    """List users with usage statistics, optionally filtered by active status."""
+    # A single WHERE condition reused by both the count and the page query so
+    # `total` reflects the filtered set, not the whole table.
+    if status_filter == "active":
+        status_condition = [User.is_active.is_(True)]
+    elif status_filter == "inactive":
+        status_condition = [User.is_active.is_(False)]
+    else:
+        status_condition = []
+
+    count_result = await db.execute(select(func.count()).select_from(User).where(*status_condition))
     total = count_result.scalar_one()
 
     # Build a subquery for usage stats to avoid N+1 queries
@@ -165,6 +192,7 @@ async def list_users(
             func.coalesce(usage_subq.c.total_chars, 0).label("total_chars"),
         )
         .outerjoin(usage_subq, User.id == usage_subq.c.user_id)
+        .where(*status_condition)
         .order_by(User.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -178,6 +206,11 @@ async def list_users(
             role=row.User.role,
             is_admin=row.User.is_admin,
             is_verified=row.User.is_verified,
+            is_active=row.User.is_active,
+            deactivated_at=(
+                row.User.deactivated_at.isoformat() if row.User.deactivated_at else None
+            ),
+            deactivation_reason=row.User.deactivation_reason,
             display_name=row.User.display_name,
             credits_balance=row.User.credits_balance,
             created_at=row.User.created_at.isoformat(),
@@ -226,6 +259,9 @@ async def get_user_detail(
         role=user.role,
         is_admin=user.is_admin,
         is_verified=user.is_verified,
+        is_active=user.is_active,
+        deactivated_at=user.deactivated_at.isoformat() if user.deactivated_at else None,
+        deactivation_reason=user.deactivation_reason,
         display_name=user.display_name,
         credits_balance=user.credits_balance,
         created_at=user.created_at.isoformat(),
@@ -310,6 +346,110 @@ async def update_user(
         is_admin=user.is_admin,
         credits_balance=user.credits_balance,
     )
+
+
+def _status_response(user: User) -> UserStatusResponse:
+    return UserStatusResponse(
+        id=str(user.id),
+        email=user.email,
+        is_active=user.is_active,
+        deactivated_at=user.deactivated_at.isoformat() if user.deactivated_at else None,
+        deactivation_reason=user.deactivation_reason,
+    )
+
+
+@router.post("/users/{user_id}/deactivate", response_model=UserStatusResponse)
+async def deactivate_user(
+    user_id: str,
+    req: DeactivateUserRequest,
+    admin_user: User = Depends(require_permission("users.edit")),
+    db: AsyncSession = Depends(get_db),
+) -> UserStatusResponse:
+    """Deactivate a user account.
+
+    A reversible soft-disable, not a delete -- the row (and its audit trail)
+    stays intact. A deactivated account is rejected at every auth path, so any
+    live session ends on its next request. A reason is required and recorded.
+    """
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Footgun guard: no self-deactivation. This alone preserves the "at least
+    # one active admin always exists" invariant -- only active admins can reach
+    # this endpoint (require_permission("users.edit")), and none can disable
+    # themselves, so the acting admin always survives the operation. No separate
+    # last-admin check is needed.
+    if str(user.id) == str(admin_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot deactivate your own account.",
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="User is already deactivated."
+        )
+
+    user.is_active = False
+    user.deactivated_at = datetime.now(UTC)
+    user.deactivation_reason = req.reason
+
+    await record_audit_log(
+        db,
+        actor=admin_user,
+        action="user.deactivated",
+        target_type="user",
+        target_id=str(user.id),
+        details={"reason": req.reason, "target_email": user.email},
+    )
+    await db.commit()
+    await db.refresh(user)
+    log.info(
+        "admin_user_deactivated",
+        target_user_id=str(user.id),
+        actor_user_id=str(admin_user.id),
+    )
+    return _status_response(user)
+
+
+@router.post("/users/{user_id}/reactivate", response_model=UserStatusResponse)
+async def reactivate_user(
+    user_id: str,
+    admin_user: User = Depends(require_permission("users.edit")),
+    db: AsyncSession = Depends(get_db),
+) -> UserStatusResponse:
+    """Re-enable a previously deactivated account and clear its deactivation state."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.is_active:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already active.")
+
+    prior_reason = user.deactivation_reason
+    user.is_active = True
+    user.deactivated_at = None
+    user.deactivation_reason = None
+
+    await record_audit_log(
+        db,
+        actor=admin_user,
+        action="user.reactivated",
+        target_type="user",
+        target_id=str(user.id),
+        details={"target_email": user.email, "prior_reason": prior_reason},
+    )
+    await db.commit()
+    await db.refresh(user)
+    log.info(
+        "admin_user_reactivated",
+        target_user_id=str(user.id),
+        actor_user_id=str(admin_user.id),
+    )
+    return _status_response(user)
 
 
 # --- Usage Analytics Endpoints ---

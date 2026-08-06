@@ -40,6 +40,17 @@ class User(Base):
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Account lifecycle. Deactivation is a reversible soft-disable (never a
+    # hard delete, which would destroy the audit trail): an inactive account
+    # is blocked at every auth path, not just at login. deactivated_at /
+    # deactivation_reason are a denormalized snapshot of the current state --
+    # the append-only admin_audit_logs table remains the full who/when trail.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=text("true"), nullable=False
+    )
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deactivation_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     # Profile
     display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     avatar: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
