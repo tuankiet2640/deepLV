@@ -1,3 +1,5 @@
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+
 function Endpoint({
   method,
   path,
@@ -75,6 +77,7 @@ function ResponseExample({ status, body }: { status: number; body: string }) {
 }
 
 export function ApiReferencePage() {
+  useDocumentTitle("API Reference");
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
       <h1 className="text-3xl font-bold text-gray-900 mb-2">API Reference</h1>

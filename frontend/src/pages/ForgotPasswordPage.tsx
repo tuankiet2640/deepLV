@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export function ForgotPasswordPage() {
+  useDocumentTitle("Forgot Password");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);

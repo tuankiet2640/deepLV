@@ -2,8 +2,10 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AuthError, useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export function LoginPage() {
+  useDocumentTitle("Sign In");
   const { login } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();

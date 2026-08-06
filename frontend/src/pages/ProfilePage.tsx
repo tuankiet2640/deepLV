@@ -5,6 +5,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useToast } from "../contexts/ToastContext";
 import { AvatarUpload } from "../components/AvatarUpload";
 import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const API_BASE = "/api/v1";
 
@@ -18,6 +19,7 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 export function ProfilePage() {
+  useDocumentTitle("Profile");
   const { user, token, refreshUser } = useAuth();
   const { setTheme } = useTheme();
   const { showToast } = useToast();

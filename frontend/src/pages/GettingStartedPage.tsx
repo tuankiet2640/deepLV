@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 function CodeBlock({ title, code }: { title: string; code: string }) {
   return (
@@ -14,6 +15,7 @@ function CodeBlock({ title, code }: { title: string; code: string }) {
 }
 
 export function GettingStartedPage() {
+  useDocumentTitle("Getting Started");
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
       <h1 className="text-3xl font-bold text-gray-900 mb-2">Getting Started</h1>

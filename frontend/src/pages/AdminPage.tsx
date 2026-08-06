@@ -5,6 +5,7 @@ import { UsageChart } from "../components/admin/UsageChart";
 import { ProviderKeyManager } from "../components/admin/ProviderKeyManager";
 import { SettingsPanel } from "../components/admin/SettingsPanel";
 import { AuditLogTable } from "../components/admin/AuditLogTable";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 type Tab = "users" | "usage" | "provider-keys" | "settings" | "audit-log";
 
@@ -17,6 +18,7 @@ const TABS: { id: Tab; label: string; adminOnly?: boolean }[] = [
 ];
 
 export function AdminPage() {
+  useDocumentTitle("Admin Dashboard");
   const { user } = useAuth();
   const isFullAdmin = user?.role === "admin";
   const visibleTabs = TABS.filter((tab) => !tab.adminOnly || isFullAdmin);

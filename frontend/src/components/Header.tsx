@@ -102,7 +102,7 @@ export function Header() {
           <div className="w-8 h-8 bg-dlv-accent rounded-lg flex items-center justify-center font-bold text-sm">
             LV
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">DeepLV</h1>
+          <span className="text-xl font-semibold tracking-tight">DeepLV</span>
         </Link>
         <nav className="hidden md:flex items-center gap-1">
           {NAV_LINKS.map((link) => (
