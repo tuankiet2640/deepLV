@@ -1,0 +1,15 @@
+# ============================================================
+# DeepLV — Grafana (Railway service)
+# ============================================================
+# The Prometheus datasource is added through the Grafana UI after deploy
+# (see RAILWAY.md), not provisioned here -- its URL depends on the
+# internal address Railway assigns the Prometheus service, which isn't
+# knowable at image build time. Only the static dashboard is baked in.
+# Admin credentials come from GF_SECURITY_ADMIN_USER/PASSWORD env vars
+# set in Railway, not baked into the image.
+# ============================================================
+
+FROM grafana/grafana:latest
+
+COPY monitoring/grafana/provisioning/dashboards /etc/grafana/provisioning/dashboards
+COPY monitoring/grafana/dashboards /var/lib/grafana/dashboards

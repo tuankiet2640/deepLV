@@ -133,6 +133,56 @@ contract, HR paperwork, anything someone might sign), use an API provider
 for non-English-pair translations regardless of whether the worker is
 running.
 
+## Optional: Deploy Prometheus + Grafana (Metrics Dashboard)
+
+The API already exposes Prometheus metrics at `/metrics` (see
+`src/api/metrics.py`) — nothing to enable there. Prometheus and Grafana are
+two more Railway services in the same project, same pattern as the worker
+above.
+
+### 1. Deploy Prometheus
+
+1. **"+ New"** → **"GitHub Repo"** → `tuankiet2640/deepLV` again.
+2. Name this service **`prometheus`** exactly — nothing depends on the name
+   directly, but it keeps step 3 below unambiguous.
+3. Settings → Build → set the Dockerfile path to `Dockerfile.prometheus`.
+4. Deploy. It scrapes the API's public `/metrics` endpoint (see
+   `monitoring/prometheus/prometheus.railway.yml`) — no networking config
+   needed for this step, and no public domain needed for this service either
+   (leave it off; only Grafana needs to be reachable from your browser).
+
+### 2. Deploy Grafana
+
+1. **"+ New"** → **"GitHub Repo"** → `tuankiet2640/deepLV` again.
+2. Settings → Build → set the Dockerfile path to `Dockerfile.grafana`.
+3. Variables tab → add `GF_SECURITY_ADMIN_USER` and `GF_SECURITY_ADMIN_PASSWORD`
+   (pick your own values — these are not defaulted).
+4. Settings → Networking → generate a public domain so you can reach the
+   dashboard in a browser.
+5. Deploy.
+
+### 3. Connect Grafana to Prometheus
+
+Grafana's Prometheus datasource isn't baked into the image, since its URL
+depends on an address Railway only assigns once Prometheus is deployed:
+
+1. On the **Prometheus** service, go to Settings → Networking and copy its
+   **private** Railway URL (looks like `prometheus.railway.internal`, port
+   `9090`).
+2. Open your new Grafana public URL, log in with the admin credentials from
+   step 2.3.
+3. Connections → Data sources → **Add data source** → **Prometheus**.
+4. Set the URL to `http://<the address you copied>:9090`.
+5. Under **Advanced settings**, set the datasource's **UID** to exactly
+   `prometheus` — the bundled dashboard (`monitoring/grafana/dashboards/deeplv-overview.json`)
+   references that UID directly, and panels show "Datasource not found" if it
+   doesn't match.
+6. **Save & test** — should show "Successfully queried the Prometheus API."
+
+The **DeepLV Overview** dashboard is already provisioned and should show
+data (request rates, latency, translations, credits spent) within a couple
+of scrape intervals.
+
 ## Costs
 
 | Service | Cost |
