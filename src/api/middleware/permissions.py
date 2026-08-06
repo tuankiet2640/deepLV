@@ -1,5 +1,8 @@
 """Granular permission checks for admin endpoints, layered on top of role."""
 
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from fastapi import Depends, HTTPException, status
 
 from src.api.middleware.dependencies import get_current_user
@@ -15,7 +18,7 @@ PERMISSIONS: dict[str, frozenset[UserRole]] = {
 }
 
 
-def require_permission(permission: str):
+def require_permission(permission: str) -> Callable[..., Coroutine[Any, Any, User]]:
     """Build a FastAPI dependency requiring the given permission.
 
     `permission` must be a key in PERMISSIONS -- a KeyError here is a

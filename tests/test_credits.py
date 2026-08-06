@@ -33,7 +33,15 @@ async def _register_admin_and_get_token(
 
 @pytest.mark.asyncio
 async def test_provider_rates_default_to_provider_info(client):
-    resp = await client.get("/api/v1/providers")
+    # This is the first DB-touching call in the file, so it needs the same
+    # OSError guard register_or_skip applies elsewhere -- a real connection
+    # failure (no Postgres in CI) raises OSError here rather than the app
+    # returning a 500, since there's no request body to trigger validation
+    # first.
+    try:
+        resp = await client.get("/api/v1/providers")
+    except OSError:
+        pytest.skip("PostgreSQL not available")
     if resp.status_code == 500:
         pytest.skip("PostgreSQL not available")
     rates = {p["name"]: p["credit_cost_per_1k_chars"] for p in resp.json()["providers"]}
