@@ -6,8 +6,10 @@ import { JobStatusCard } from "../components/JobStatusCard";
 import { useDocumentTranslation } from "../hooks/useDocumentTranslation";
 import { useModelWorkerStatus } from "../hooks/useModelWorkerStatus";
 import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export function DocumentTranslatePage() {
+  useDocumentTitle("Document Translation");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [sourceLang, setSourceLang] = useState("auto");
   const [targetLang, setTargetLang] = useState("en");

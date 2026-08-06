@@ -67,6 +67,7 @@ class DocumentTranslator:
             db: Database session.
             provider_key_id: Optional BYOK key ID.
         """
+        credits_charged: float | None = None
         try:
             # Mark as processing
             job.status = "processing"
@@ -93,13 +94,15 @@ class DocumentTranslator:
             # Reserve credits BEFORE translation if using admin key
             total_chars = len("\n\n".join(paragraphs))
             if not resolved.used_own_key and job.provider != "marianmt":
-                credit_ok = await self.provider_manager.deduct_credits(
+                credits_charged = await self.provider_manager.deduct_credits(
                     user=user,
                     db=db,
                     provider_name=job.provider,
                     char_count=total_chars,
+                    source_lang=job.source_lang,
+                    target_lang=job.target_lang,
                 )
-                if not credit_ok:
+                if credits_charged is None:
                     log.warning(
                         "insufficient_credits_for_document",
                         job_id=str(job.id),
@@ -189,6 +192,14 @@ class DocumentTranslator:
             job.status = "failed"
             job.error_message = str(e)
             job.completed_at = datetime.now(UTC)
+            if credits_charged:
+                await self.provider_manager.refund_credits(
+                    user=user,
+                    db=db,
+                    amount=credits_charged,
+                    provider_name=job.provider,
+                    reason=f"Document translation job {job.id} failed after credits were reserved",
+                )
             await db.commit()
 
     async def _translate_paragraph(

@@ -316,7 +316,6 @@ deepLV/
 | `ADMIN_OPENAI_KEY` | Admin OpenAI API key | Empty |
 | `ADMIN_HUGGINGFACE_KEY` | Admin HuggingFace key | Empty |
 | `ADMIN_GOOGLE_KEY` | Admin Google Translation key | Empty |
-| `CREDIT_COST_PER_1K_CHARS` | Credits charged per 1000 chars | `5.0` |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Tunnel token (prod only) | Required for prod |
 | `GRAFANA_ADMIN_USER` | Grafana admin username | `admin` |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana admin password | Required |

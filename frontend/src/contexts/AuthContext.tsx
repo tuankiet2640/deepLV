@@ -13,6 +13,7 @@ const API_BASE = "/api/v1";
 export interface AuthUser {
   id: string;
   email: string;
+  role?: string;
   is_admin?: boolean;
   is_verified?: boolean;
   display_name?: string | null;
@@ -24,6 +25,10 @@ export interface AuthUser {
   credits_balance?: number;
   created_at?: string;
   last_login_at?: string | null;
+}
+
+export function hasAdminAccess(user: AuthUser | null): boolean {
+  return user?.role === "admin" || user?.role === "support";
 }
 
 export class AuthError extends Error {
@@ -61,6 +66,7 @@ async function fetchUserProfile(accessToken: string): Promise<AuthUser> {
   return {
     id: data.id,
     email: data.email,
+    role: data.role,
     is_admin: data.is_admin,
     is_verified: data.is_verified,
     display_name: data.display_name,

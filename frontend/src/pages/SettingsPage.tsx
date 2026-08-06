@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const API_BASE = "/api/v1";
 
@@ -671,6 +672,7 @@ function CreditsTab() {
 }
 
 export function SettingsPage() {
+  useDocumentTitle("Settings");
   const [activeTab, setActiveTab] = useState<Tab>("provider-keys");
 
   const tabs: { id: Tab; label: string }[] = [

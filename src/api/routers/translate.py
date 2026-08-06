@@ -200,10 +200,15 @@ async def translate(
     # requests were rejected above), so user is guaranteed non-None here.
     if req.provider != "marianmt" and not resolved.used_own_key:
         assert user is not None
-        has_credits = await provider_manager.deduct_credits(
-            user=user, db=db, provider_name=req.provider, char_count=len(req.text)
+        charged = await provider_manager.deduct_credits(
+            user=user,
+            db=db,
+            provider_name=req.provider,
+            char_count=len(req.text),
+            source_lang=source_lang,
+            target_lang=req.target_lang,
         )
-        if not has_credits:
+        if charged is None:
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail="Insufficient credits. Purchase credits or use your own API key.",

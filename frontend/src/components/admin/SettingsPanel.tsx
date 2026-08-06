@@ -8,9 +8,17 @@ interface Setting {
 const API_BASE = "/api/v1";
 
 const SETTING_LABELS: Record<string, { label: string; description: string }> = {
-  credit_cost_per_1k_chars: {
-    label: "Credit Cost per 1K Characters",
-    description: "Number of credits deducted per 1,000 characters when users pay with platform credits.",
+  credit_cost_per_1k_chars_openai: {
+    label: "OpenAI: Credits per 1K Characters",
+    description: "Credits deducted per 1,000 characters translated via OpenAI using the platform's key.",
+  },
+  credit_cost_per_1k_chars_huggingface: {
+    label: "HuggingFace: Credits per 1K Characters",
+    description: "Credits deducted per 1,000 characters translated via HuggingFace using the platform's key.",
+  },
+  credit_cost_per_1k_chars_google: {
+    label: "Google: Credits per 1K Characters",
+    description: "Credits deducted per 1,000 characters translated via Google Translate using the platform's key.",
   },
   max_document_size_mb: {
     label: "Max Document Size (MB)",
@@ -19,10 +27,6 @@ const SETTING_LABELS: Record<string, { label: string; description: string }> = {
   max_translation_chars: {
     label: "Max Translation Characters",
     description: "Maximum characters per single translation request.",
-  },
-  free_tier_daily_chars: {
-    label: "Free Tier Daily Characters",
-    description: "Number of characters free-tier users can translate per day without spending credits.",
   },
 };
 

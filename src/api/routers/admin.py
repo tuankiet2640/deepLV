@@ -14,10 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
 from src.api.middleware.admin import get_admin_user
+from src.api.middleware.permissions import require_permission
+from src.api.models.admin_audit_log import AdminAuditLog
 from src.api.models.admin_provider_key import AdminProviderKey
 from src.api.models.admin_settings import DEFAULT_SETTINGS, AdminSetting
 from src.api.models.usage_log import UsageLog
-from src.api.models.user import User
+from src.api.models.user import User, UserRole
+from src.api.services.audit_log import record_audit_log
 from src.api.services.encryption import encrypt_api_key
 
 log = structlog.get_logger()
@@ -30,6 +33,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 class UserSummary(BaseModel):
     id: str
     email: str
+    role: str
     is_admin: bool
     is_verified: bool
     display_name: str | None
@@ -47,6 +51,7 @@ class UsersListResponse(BaseModel):
 class UserDetailResponse(BaseModel):
     id: str
     email: str
+    role: str
     is_admin: bool
     is_verified: bool
     display_name: str | None
@@ -58,13 +63,15 @@ class UserDetailResponse(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
-    is_admin: bool | None = None
+    role: str | None = None
+    is_admin: bool | None = None  # deprecated: prefer `role`, kept for back-compat
     credits_balance: float | None = None
 
 
 class UpdateUserResponse(BaseModel):
     id: str
     email: str
+    role: str
     is_admin: bool
     credits_balance: float
 
@@ -109,12 +116,27 @@ class UpdateSettingsRequest(BaseModel):
     settings: dict[str, str]
 
 
+class AuditLogEntryResponse(BaseModel):
+    id: str
+    actor_email: str
+    action: str
+    target_type: str | None
+    target_id: str | None
+    details: str | None
+    created_at: str
+
+
+class AuditLogListResponse(BaseModel):
+    entries: list[AuditLogEntryResponse]
+    total: int
+
+
 # --- User Management Endpoints ---
 
 
 @router.get("/users", response_model=UsersListResponse)
 async def list_users(
-    _admin: User = Depends(get_admin_user),
+    _user: User = Depends(require_permission("users.view")),
     db: AsyncSession = Depends(get_db),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -153,6 +175,7 @@ async def list_users(
         UserSummary(
             id=str(row.User.id),
             email=row.User.email,
+            role=row.User.role,
             is_admin=row.User.is_admin,
             is_verified=row.User.is_verified,
             display_name=row.User.display_name,
@@ -170,7 +193,7 @@ async def list_users(
 @router.get("/users/{user_id}", response_model=UserDetailResponse)
 async def get_user_detail(
     user_id: str,
-    _admin: User = Depends(get_admin_user),
+    _user: User = Depends(require_permission("users.view")),
     db: AsyncSession = Depends(get_db),
 ) -> UserDetailResponse:
     """Get detailed information about a specific user."""
@@ -200,6 +223,7 @@ async def get_user_detail(
     return UserDetailResponse(
         id=str(user.id),
         email=user.email,
+        role=user.role,
         is_admin=user.is_admin,
         is_verified=user.is_verified,
         display_name=user.display_name,
@@ -225,24 +249,50 @@ async def get_user_detail(
 async def update_user(
     user_id: str,
     req: UpdateUserRequest,
-    _admin: User = Depends(get_admin_user),
+    admin_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ) -> UpdateUserResponse:
-    """Update a user's admin status or credits balance."""
+    """Update a user's role or credits balance."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    if req.is_admin is not None:
-        user.is_admin = req.is_admin
+    changes: dict = {}
+
+    new_role = req.role
+    if new_role is None and req.is_admin is not None:
+        new_role = UserRole.ADMIN.value if req.is_admin else UserRole.USER.value
+    if new_role is not None:
+        valid_roles = {r.value for r in UserRole}
+        if new_role not in valid_roles:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid role: {new_role}. Valid: {', '.join(sorted(valid_roles))}",
+            )
+        if new_role != user.role:
+            changes["role"] = {"old": user.role, "new": new_role}
+            user.role = new_role
+
     if req.credits_balance is not None:
         if req.credits_balance < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Credits balance cannot be negative",
             )
+        if req.credits_balance != user.credits_balance:
+            changes["credits_balance"] = {"old": user.credits_balance, "new": req.credits_balance}
         user.credits_balance = req.credits_balance
+
+    if changes:
+        await record_audit_log(
+            db,
+            actor=admin_user,
+            action="user.updated",
+            target_type="user",
+            target_id=str(user.id),
+            details=changes,
+        )
 
     await db.commit()
     await db.refresh(user)
@@ -250,12 +300,13 @@ async def update_user(
     log.info(
         "admin_user_updated",
         target_user_id=str(user.id),
-        is_admin=user.is_admin,
+        role=user.role,
         credits_balance=user.credits_balance,
     )
     return UpdateUserResponse(
         id=str(user.id),
         email=user.email,
+        role=user.role,
         is_admin=user.is_admin,
         credits_balance=user.credits_balance,
     )
@@ -266,7 +317,7 @@ async def update_user(
 
 @router.get("/usage", response_model=UsageAnalyticsResponse)
 async def get_usage_analytics(
-    _admin: User = Depends(get_admin_user),
+    _user: User = Depends(require_permission("usage.view")),
     db: AsyncSession = Depends(get_db),
 ) -> UsageAnalyticsResponse:
     """Get global usage analytics for the platform."""
@@ -295,11 +346,12 @@ async def get_usage_analytics(
     active_users_30d = active_result.scalar_one()
 
     # Translations by provider
+    provider_expr = func.coalesce(UsageLog.provider, "marianmt")
     provider_result = await db.execute(
         select(
-            func.coalesce(UsageLog.provider, "marianmt").label("provider"),
+            provider_expr.label("provider"),
             func.count(UsageLog.id).label("count"),
-        ).group_by(func.coalesce(UsageLog.provider, "marianmt"))
+        ).group_by(provider_expr)
     )
     translations_by_provider: dict[str, int] = {
         row.provider: row.count for row in provider_result.all()
@@ -388,7 +440,7 @@ async def list_admin_provider_keys(
 )
 async def create_admin_provider_key(
     req: CreateAdminKeyRequest,
-    _admin: User = Depends(get_admin_user),
+    admin_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ) -> AdminProviderKeyResponse:
     """Add a new admin provider key for credit-based translations."""
@@ -405,6 +457,15 @@ async def create_admin_provider_key(
         is_active=True,
     )
     db.add(admin_key)
+    await db.flush()
+    await record_audit_log(
+        db,
+        actor=admin_user,
+        action="provider_key.created",
+        target_type="provider_key",
+        target_id=str(admin_key.id),
+        details={"provider": req.provider},
+    )
     await db.commit()
     await db.refresh(admin_key)
 
@@ -421,7 +482,7 @@ async def create_admin_provider_key(
 @router.delete("/provider-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_admin_provider_key(
     key_id: str,
-    _admin: User = Depends(get_admin_user),
+    admin_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete an admin provider key."""
@@ -430,6 +491,14 @@ async def delete_admin_provider_key(
     if not key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider key not found")
 
+    await record_audit_log(
+        db,
+        actor=admin_user,
+        action="provider_key.deleted",
+        target_type="provider_key",
+        target_id=str(key.id),
+        details={"provider": key.provider},
+    )
     await db.delete(key)
     await db.commit()
     log.info("admin_provider_key_deleted", key_id=key_id)
@@ -447,8 +516,10 @@ async def get_settings(
     result = await db.execute(select(AdminSetting))
     stored = {s.key: s.value for s in result.scalars().all()}
 
-    # Merge with defaults
-    all_settings = {**DEFAULT_SETTINGS, **stored}
+    # Keyed off DEFAULT_SETTINGS (not `stored`) so a setting removed from the
+    # defaults (e.g. a retired one) disappears from the API even if an old
+    # row for it still lingers in the table.
+    all_settings = {k: stored.get(k, v) for k, v in DEFAULT_SETTINGS.items()}
     return SettingsResponse(
         settings=[SettingResponse(key=k, value=v) for k, v in all_settings.items()]
     )
@@ -457,17 +528,20 @@ async def get_settings(
 @router.patch("/settings", response_model=SettingsResponse)
 async def update_settings(
     req: UpdateSettingsRequest,
-    _admin: User = Depends(get_admin_user),
+    admin_user: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ) -> SettingsResponse:
     """Update admin settings (credit pricing, limits, etc.)."""
     # Settings that must have valid numeric values
     numeric_settings = {
-        "credit_cost_per_1k_chars",
+        "credit_cost_per_1k_chars_openai",
+        "credit_cost_per_1k_chars_huggingface",
+        "credit_cost_per_1k_chars_google",
         "max_document_size_mb",
         "max_translation_chars",
-        "free_tier_daily_chars",
     }
+
+    changes: dict = {}
 
     for key, value in req.settings.items():
         if key not in DEFAULT_SETTINGS:
@@ -494,10 +568,22 @@ async def update_settings(
         # Upsert the setting
         result = await db.execute(select(AdminSetting).where(AdminSetting.key == key))
         existing = result.scalar_one_or_none()
+        old_value = existing.value if existing else DEFAULT_SETTINGS[key]
+        if value != old_value:
+            changes[key] = {"old": old_value, "new": value}
         if existing:
             existing.value = value
         else:
             db.add(AdminSetting(key=key, value=value))
+
+    if changes:
+        await record_audit_log(
+            db,
+            actor=admin_user,
+            action="settings.updated",
+            target_type="settings",
+            details=changes,
+        )
 
     await db.commit()
     log.info("admin_settings_updated", settings=req.settings)
@@ -505,7 +591,42 @@ async def update_settings(
     # Return updated settings
     result = await db.execute(select(AdminSetting))
     stored = {s.key: s.value for s in result.scalars().all()}
-    all_settings = {**DEFAULT_SETTINGS, **stored}
+    all_settings = {k: stored.get(k, v) for k, v in DEFAULT_SETTINGS.items()}
     return SettingsResponse(
         settings=[SettingResponse(key=k, value=v) for k, v in all_settings.items()]
+    )
+
+
+# --- Audit Log Endpoint ---
+
+
+@router.get("/audit-log", response_model=AuditLogListResponse)
+async def list_audit_log(
+    _admin: User = Depends(require_permission("audit.view")),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> AuditLogListResponse:
+    """List admin audit log entries, most recent first."""
+    count_result = await db.execute(select(func.count()).select_from(AdminAuditLog))
+    total = count_result.scalar_one()
+
+    result = await db.execute(
+        select(AdminAuditLog).order_by(AdminAuditLog.created_at.desc()).limit(limit).offset(offset)
+    )
+    entries = result.scalars().all()
+    return AuditLogListResponse(
+        entries=[
+            AuditLogEntryResponse(
+                id=str(e.id),
+                actor_email=e.actor_email,
+                action=e.action,
+                target_type=e.target_type,
+                target_id=e.target_id,
+                details=e.details,
+                created_at=e.created_at.isoformat(),
+            )
+            for e in entries
+        ],
+        total=total,
     )

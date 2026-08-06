@@ -8,6 +8,7 @@ class Base(DeclarativeBase):
 
 
 # Import all models so they register with Base.metadata
+from src.api.models.admin_audit_log import AdminAuditLog  # noqa: E402, F401
 from src.api.models.admin_provider_key import AdminProviderKey  # noqa: E402, F401
 from src.api.models.admin_settings import AdminSetting  # noqa: E402, F401
 from src.api.models.api_key import APIKey  # noqa: E402, F401

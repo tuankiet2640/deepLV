@@ -2,11 +2,13 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const API_BASE = "/api/v1";
 const RESEND_COOLDOWN_SECONDS = 30;
 
 export function VerifyEmailPage() {
+  useDocumentTitle("Verify Email");
   const { loginWithToken } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();

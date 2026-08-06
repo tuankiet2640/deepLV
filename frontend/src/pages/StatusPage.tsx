@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 interface HealthData {
   status: string;
@@ -33,6 +34,7 @@ function formatUptime(seconds: number): string {
 }
 
 export function StatusPage() {
+  useDocumentTitle("System Status");
   const [health, setHealth] = useState<HealthData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

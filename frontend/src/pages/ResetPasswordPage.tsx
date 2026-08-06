@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export function ResetPasswordPage() {
+  useDocumentTitle("Reset Password");
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");

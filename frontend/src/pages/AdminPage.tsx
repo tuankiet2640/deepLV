@@ -1,19 +1,27 @@
 import { useState } from "react";
+import { useAuth } from "../contexts/AuthContext";
 import { UserTable } from "../components/admin/UserTable";
 import { UsageChart } from "../components/admin/UsageChart";
 import { ProviderKeyManager } from "../components/admin/ProviderKeyManager";
 import { SettingsPanel } from "../components/admin/SettingsPanel";
+import { AuditLogTable } from "../components/admin/AuditLogTable";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
-type Tab = "users" | "usage" | "provider-keys" | "settings";
+type Tab = "users" | "usage" | "provider-keys" | "settings" | "audit-log";
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: Tab; label: string; adminOnly?: boolean }[] = [
   { id: "users", label: "Users" },
   { id: "usage", label: "Usage Analytics" },
-  { id: "provider-keys", label: "Provider Keys" },
-  { id: "settings", label: "Settings" },
+  { id: "provider-keys", label: "Provider Keys", adminOnly: true },
+  { id: "settings", label: "Settings", adminOnly: true },
+  { id: "audit-log", label: "Audit Log", adminOnly: true },
 ];
 
 export function AdminPage() {
+  useDocumentTitle("Admin Dashboard");
+  const { user } = useAuth();
+  const isFullAdmin = user?.role === "admin";
+  const visibleTabs = TABS.filter((tab) => !tab.adminOnly || isFullAdmin);
   const [activeTab, setActiveTab] = useState<Tab>("users");
 
   return (
@@ -28,7 +36,7 @@ export function AdminPage() {
       {/* Tabs */}
       <div className="border-b border-dlv-border mb-6">
         <nav className="flex gap-1 -mb-px">
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -50,6 +58,7 @@ export function AdminPage() {
         {activeTab === "usage" && <UsageChart />}
         {activeTab === "provider-keys" && <ProviderKeyManager />}
         {activeTab === "settings" && <SettingsPanel />}
+        {activeTab === "audit-log" && <AuditLogTable />}
       </div>
     </div>
   );

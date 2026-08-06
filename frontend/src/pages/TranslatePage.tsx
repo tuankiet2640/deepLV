@@ -7,8 +7,10 @@ import { useModelWorkerStatus } from "../hooks/useModelWorkerStatus";
 import { CostEstimate } from "../components/CostEstimate";
 import { useAuth } from "../contexts/AuthContext";
 import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export function TranslatePage() {
+  useDocumentTitle("Translate");
   const { user, isAuthenticated } = useAuth();
   const [sourceLang, setSourceLang] = useState(user?.default_source_lang ?? "auto");
   const [targetLang, setTargetLang] = useState(user?.default_target_lang ?? "de");

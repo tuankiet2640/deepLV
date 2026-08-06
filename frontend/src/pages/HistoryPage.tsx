@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const API_BASE = "/api/v1";
 
@@ -35,6 +36,7 @@ interface HistoryItem {
 }
 
 export function HistoryPage() {
+  useDocumentTitle("History");
   const { token } = useAuth();
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [total, setTotal] = useState(0);

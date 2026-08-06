@@ -22,10 +22,16 @@ class AdminSetting(Base):
     )
 
 
-# Default settings and their types
+# Default settings and their types.
+#
+# Per-provider credit rates replace a single flat credit_cost_per_1k_chars --
+# each paid provider (marianmt is always free) costs the platform a
+# different amount, so pricing needs to vary by provider to mean anything.
+# Defaults mirror PROVIDER_INFO in provider_manager.py.
 DEFAULT_SETTINGS = {
-    "credit_cost_per_1k_chars": "5.0",
+    "credit_cost_per_1k_chars_openai": "5.0",
+    "credit_cost_per_1k_chars_huggingface": "2.0",
+    "credit_cost_per_1k_chars_google": "3.0",
     "max_document_size_mb": "50",
     "max_translation_chars": "10000",
-    "free_tier_daily_chars": "5000",
 }

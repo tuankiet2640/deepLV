@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
-import { useAuth } from "../contexts/AuthContext";
+import { hasAdminAccess, useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 
 function ThemeToggle() {
@@ -71,7 +71,7 @@ export function Header() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const isAdmin = !!user?.is_admin;
+  const isAdmin = hasAdminAccess(user);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -102,7 +102,7 @@ export function Header() {
           <div className="w-8 h-8 bg-dlv-accent rounded-lg flex items-center justify-center font-bold text-sm">
             LV
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">DeepLV</h1>
+          <span className="text-xl font-semibold tracking-tight">DeepLV</span>
         </Link>
         <nav className="hidden md:flex items-center gap-1">
           {NAV_LINKS.map((link) => (

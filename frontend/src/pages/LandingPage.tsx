@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const STATS = [
   { value: "10+", label: "Languages" },
@@ -230,6 +231,7 @@ const API_CODE_SNIPPET = `curl -X POST https://api.deeplv.com/api/v1/translate \
 }`;
 
 export function LandingPage() {
+  useDocumentTitle("DeepLV Translator");
   return (
     <div className="overflow-hidden">
       {/* Hero Section */}

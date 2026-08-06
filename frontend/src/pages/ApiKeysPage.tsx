@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 const API_BASE = "/api/v1";
 
@@ -12,6 +13,7 @@ interface ApiKey {
 }
 
 export function ApiKeysPage() {
+  useDocumentTitle("API Keys");
   const { token } = useAuth();
   const { showToast } = useToast();
   const [keys, setKeys] = useState<ApiKey[]>([]);

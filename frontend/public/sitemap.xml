@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Replace https://REPLACE-WITH-YOUR-DOMAIN below with the real production
+  domain once it's fixed (see index.html's og:image note for the same
+  caveat). <loc> must be an absolute URL per the sitemap spec, so this
+  file is a template, not something to ship with a placeholder domain.
+
+  Only public, unauthenticated routes are listed; app pages behind login
+  (translate, documents, settings, admin, etc.) don't belong in a sitemap.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/</loc>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/getting-started</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/api-reference</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/architecture</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/about</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/status</loc>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/login</loc>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://REPLACE-WITH-YOUR-DOMAIN/register</loc>
+    <priority>0.6</priority>
+  </url>
+</urlset>
