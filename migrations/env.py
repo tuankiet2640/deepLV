@@ -26,7 +26,12 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# set_main_option stores the value in a ConfigParser, which treats a bare
+# % as the start of an interpolation escape (e.g. %(foo)s) and raises
+# ValueError on any other %. Supabase pooler passwords are URL-encoded and
+# routinely contain literal %-sequences (e.g. %29 for ")"), so escape %
+# to %% here or a DB password with punctuation breaks every migration run.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
