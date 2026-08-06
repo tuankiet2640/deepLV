@@ -612,10 +612,7 @@ async def list_audit_log(
     total = count_result.scalar_one()
 
     result = await db.execute(
-        select(AdminAuditLog)
-        .order_by(AdminAuditLog.created_at.desc())
-        .limit(limit)
-        .offset(offset)
+        select(AdminAuditLog).order_by(AdminAuditLog.created_at.desc()).limit(limit).offset(offset)
     )
     entries = result.scalars().all()
     return AuditLogListResponse(
