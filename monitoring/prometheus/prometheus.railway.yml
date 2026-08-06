@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Scrapes over the public HTTPS domain instead of Railway's private network:
+# /metrics has no auth (same as it's always had), so scraping it publicly
+# adds no new exposure, and it sidesteps having to know which internal port
+# Railway assigned the API service. Swap in the private "<service>.railway.internal"
+# hostname later if /metrics ever gets locked down to internal-only traffic.
+scrape_configs:
+  - job_name: "deeplv-api"
+    metrics_path: /metrics
+    scheme: https
+    static_configs:
+      - targets: ["deeplv-production.up.railway.app"]
+        labels:
+          service: "api"

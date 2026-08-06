@@ -1,0 +1,12 @@
+# ============================================================
+# DeepLV — Prometheus (Railway service)
+# ============================================================
+# Scrapes the API's /metrics over its public HTTPS domain -- see
+# monitoring/prometheus/prometheus.railway.yml for why.
+# ============================================================
+
+FROM prom/prometheus:latest
+
+COPY monitoring/prometheus/prometheus.railway.yml /etc/prometheus/prometheus.yml
+
+CMD ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
