@@ -63,17 +63,30 @@ async def metrics_middleware(
     response = await call_next(request)
     elapsed = time.monotonic() - start
 
-    path = request.url.path
-    # Normalize path to avoid cardinality explosion
-    if path.startswith("/api/v1/keys/"):
-        path = "/api/v1/keys/{id}"
+    # Substitute matched path params (IDs, UUIDs) back to their "{name}"
+    # placeholder so e.g. "/api/v1/admin/users/<uuid>" collapses into one
+    # series per route instead of growing cardinality without bound (and,
+    # since /metrics is unauthenticated, publicly leaking those IDs).
+    # route.path alone isn't enough here: it only reflects the path as
+    # declared on its own APIRouter, not prefixes added later via
+    # app.include_router(prefix=...), so it'd silently drop "/api/v1".
+    # Requests that never matched a route (404s, scanner traffic hitting
+    # arbitrary paths) have the same unbounded-cardinality problem via the
+    # raw path, so they're collapsed into a single bucket instead.
+    route = request.scope.get("route")
+    if route is None:
+        endpoint = "{unmatched}"
+    else:
+        endpoint = request.url.path
+        for name, value in request.path_params.items():
+            endpoint = endpoint.replace(str(value), f"{{{name}}}", 1)
 
     REQUEST_COUNT.labels(
         method=request.method,
-        endpoint=path,
+        endpoint=endpoint,
         status=response.status_code,
     ).inc()
-    REQUEST_LATENCY.labels(method=request.method, endpoint=path).observe(elapsed)
+    REQUEST_LATENCY.labels(method=request.method, endpoint=endpoint).observe(elapsed)
 
     return response
 
