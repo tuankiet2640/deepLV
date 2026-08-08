@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { HeroDemo } from "../components/HeroDemo";
 
+// Honest, verifiable facts only -- no fabricated uptime/"enterprise" claims.
 const STATS = [
-  { value: "10+", label: "Languages" },
-  { value: "<1s", label: "Translation Speed" },
-  { value: "99.9%", label: "Uptime" },
-  { value: "Enterprise", label: "Ready" },
+  { value: "10", label: "Languages" },
+  { value: "4", label: "Providers" },
+  { value: "$0", label: "Free tier, no card" },
+  { value: "BYOK", label: "Use your own keys" },
 ];
 
 const STEPS = [
@@ -269,36 +271,12 @@ export function LandingPage() {
             </a>
           </div>
 
-          {/* Mini demo preview */}
+          {/* Live mini-translator -- real anonymous MarianMT calls, editable */}
           <div className="mt-16 max-w-3xl mx-auto">
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 shadow-2xl">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="text-left">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      English
-                    </span>
-                    <span className="text-xs text-gray-500">Auto-detected</span>
-                  </div>
-                  <p className="text-gray-200 text-base leading-relaxed">
-                    The future of translation is here. Fast, accurate, and available in
-                    multiple languages with the providers you trust.
-                  </p>
-                </div>
-                <div className="text-left border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-dlv-accent uppercase tracking-wider">
-                      German
-                    </span>
-                    <span className="text-xs text-gray-500">via MarianMT</span>
-                  </div>
-                  <p className="text-gray-200 text-base leading-relaxed">
-                    Die Zukunft der Ubersetzung ist da. Schnell, genau und in mehreren
-                    Sprachen mit den Anbietern, denen Sie vertrauen.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <HeroDemo />
+            <p className="mt-3 text-xs text-gray-400">
+              Real translation, live. No account needed to try it.
+            </p>
           </div>
         </div>
       </section>
