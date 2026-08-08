@@ -17,6 +17,8 @@ export function useTranslation(
   sourceLang: string,
   targetLang: string,
   provider: string = "marianmt",
+  providerKeyId: string | null = null,
+  forceAdmin: boolean = false,
 ): TranslationResult {
   const [translatedText, setTranslatedText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -70,6 +72,9 @@ export function useTranslation(
             source_lang: sourceLang,
             target_lang: targetLang,
             provider: provider,
+            // A chosen own key wins; otherwise forceAdmin opts into credits.
+            ...(providerKeyId ? { provider_key_id: providerKeyId } : {}),
+            ...(forceAdmin ? { key_source: "admin" } : {}),
           }),
           signal: controller.signal,
         });
@@ -95,7 +100,7 @@ export function useTranslation(
     return () => {
       clearTimeout(timer);
     };
-  }, [text, sourceLang, targetLang, provider]);
+  }, [text, sourceLang, targetLang, provider, providerKeyId, forceAdmin]);
 
   return { translatedText, isLoading, error, latencyMs, cached, detectedLang };
 }

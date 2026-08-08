@@ -41,6 +41,11 @@ class TranslateRequest(BaseModel):
     target_lang: str = Field(..., pattern=r"^[a-z]{2}$")
     provider: str = Field(default="marianmt", pattern=r"^(marianmt|openai|huggingface|google)$")
     provider_key_id: str | None = Field(default=None)
+    # How to pay for a non-marianmt provider when no specific key is named:
+    # "auto" uses your own stored key if you have one, else admin credits;
+    # "admin" forces admin credits even if you have a key. provider_key_id,
+    # when set, always wins over this.
+    key_source: str = Field(default="auto", pattern=r"^(auto|admin)$")
 
 
 class TranslateResponse(BaseModel):
@@ -51,6 +56,10 @@ class TranslateResponse(BaseModel):
     cached: bool
     latency_ms: float
     provider: str = "marianmt"
+    # True when the translation ran on the user's own stored/BYOK key (free),
+    # False when it used the platform admin key (credits) or marianmt. Lets the
+    # UI confirm which source actually paid, rather than the client guessing.
+    used_own_key: bool = False
 
 
 class LanguageInfo(BaseModel):
@@ -189,6 +198,7 @@ async def translate(
             user=user,
             db=db,
             provider_key_id=req.provider_key_id,
+            key_source=req.key_source,
         )
     except ProviderError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -265,6 +275,7 @@ async def translate(
         cached=False,
         latency_ms=round(elapsed, 1),
         provider=req.provider,
+        used_own_key=resolved.used_own_key,
     )
 
 
