@@ -4,7 +4,7 @@ import { TranslationPanel } from "../components/TranslationPanel";
 import { ProviderSelector } from "../components/ProviderSelector";
 import { useTranslation } from "../hooks/useTranslation";
 import { useModelWorkerStatus } from "../hooks/useModelWorkerStatus";
-import { CostEstimate } from "../components/CostEstimate";
+import { KeySourceSelector, type KeySelection } from "../components/KeySourceSelector";
 import { useAuth } from "../contexts/AuthContext";
 import { LANGUAGES, TARGET_LANGUAGES } from "../constants/languages";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -16,6 +16,7 @@ export function TranslatePage() {
   const [targetLang, setTargetLang] = useState(user?.default_target_lang ?? "de");
   const [sourceText, setSourceText] = useState("");
   const [provider, setProvider] = useState("marianmt");
+  const [keySel, setKeySel] = useState<KeySelection>({ providerKeyId: null, forceAdmin: false });
   const marianmtAvailable = useModelWorkerStatus();
 
   // Signed-out visitors get a limited MarianMT-only tier (see
@@ -31,6 +32,8 @@ export function TranslatePage() {
     sourceLang,
     targetLang,
     provider,
+    keySel.providerKeyId,
+    keySel.forceAdmin,
   );
 
   // MarianMT has no direct model for most non-English pairs and pivots
@@ -159,10 +162,17 @@ export function TranslatePage() {
           />
         </div>
 
-        {/* Cost estimate */}
-        <div className="px-4 pb-3">
-          <CostEstimate provider={provider} charCount={sourceText.length} />
-        </div>
+        {/* Key source + cost estimate. Only signed-in users reach a paid
+            provider; anonymous visitors are MarianMT-only (free). */}
+        {isAuthenticated && (
+          <div className="px-4 pb-3">
+            <KeySourceSelector
+              provider={provider}
+              charCount={sourceText.length}
+              onChange={setKeySel}
+            />
+          </div>
+        )}
 
         {/* Error bar */}
         {error && (

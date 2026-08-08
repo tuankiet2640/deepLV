@@ -116,6 +116,7 @@ class ProviderManager:
         user: User | None,
         db: AsyncSession,
         provider_key_id: str | None = None,
+        key_source: str = "auto",
     ) -> ResolvedProvider:
         """Resolve and instantiate the correct provider.
 
@@ -128,6 +129,12 @@ class ProviderManager:
             provider_key_id: Optional specific user key to use. When omitted,
                 any key the user has stored for this provider is used instead
                 of falling straight through to the admin key.
+            key_source: How to choose the key when provider_key_id is not set.
+                "auto" (default) prefers the user's stored key and only spends
+                credits if they have none. "admin" forces the platform admin
+                key + credits even when the user has a key of their own -- the
+                explicit opt-in that lets the Translate page's source picker
+                offer "pay with credits" alongside "use my key".
 
         Returns:
             A ResolvedProvider carrying the provider and the key source.
@@ -149,11 +156,19 @@ class ProviderManager:
         if user is None:
             raise ProviderError(provider_name, "Sign in to use providers other than MarianMT")
 
-        # An explicitly chosen BYOK key wins
+        # An explicitly chosen BYOK key wins over everything else.
         if provider_key_id:
             return ResolvedProvider(
                 provider=await self._resolve_user_key(provider_name, user, db, provider_key_id),
                 used_own_key=True,
+            )
+
+        # Explicit opt-in to spend credits: skip the stored-key preference and
+        # go straight to the admin key even if the user has a key saved.
+        if key_source == "admin":
+            return ResolvedProvider(
+                provider=await self._resolve_admin_key(provider_name, db),
+                used_own_key=False,
             )
 
         # No key was named: prefer a key the user has already stored for this
@@ -232,14 +247,21 @@ class ProviderManager:
 
     async def _resolve_admin_key(self, provider_name: str, db: AsyncSession) -> TranslationProvider:
         """Resolve provider using admin-managed key (user pays credits)."""
-        # Check for active admin key for this provider
+        # Pick any one active admin key for this provider. Nothing stops an
+        # admin from adding several keys for the same provider (the create
+        # endpoint doesn't dedupe), so this must NOT assume exactly one --
+        # scalar_one_or_none() would raise MultipleResultsFound and 500 every
+        # credit-based translation the moment a second key exists.
         result = await db.execute(
-            select(AdminProviderKey).where(
+            select(AdminProviderKey)
+            .where(
                 AdminProviderKey.provider == provider_name,
                 AdminProviderKey.is_active.is_(True),
             )
+            .order_by(AdminProviderKey.created_at.desc())
+            .limit(1)
         )
-        admin_key = result.scalar_one_or_none()
+        admin_key = result.scalars().first()
         if admin_key:
             api_key = decrypt_api_key(admin_key.encrypted_api_key)
             return self._create_provider(provider_name, api_key)
